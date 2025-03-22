@@ -1,0 +1,14 @@
+# to create a conda environment:
+#   conda env create --file=<environment_yml>
+name: dev # name of the environment to create
+channels: # places to get packages from
+  - default
+  - conda-forge
+dependencies: # packages to install
+  - numpy # arrays
+  - pip
+  - pip: # pip packages
+    - opencv-python # image manipulation and anlysis
+    - pyyml # yaml file manipulation
+    - matplotlib # matlab-style plotting and visualization
+

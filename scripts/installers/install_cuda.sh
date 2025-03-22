@@ -5,6 +5,8 @@
 # https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_local
 # if the ubuntu version is ever changed, gonna need to modify this
 
+echo "installing cuda"
+
 # store the current script directory
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 

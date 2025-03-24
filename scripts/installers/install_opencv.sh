@@ -7,7 +7,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # install open cv
 mkdir $SCRIPT_DIR/opencv_install
-cd opencv_install
+cd $SCRIPT_DIR/opencv_install
 
 # Install minimal prerequisites (Ubuntu 18.04 as reference)
 sudo apt update && sudo apt install -y cmake g++ wget unzip
@@ -24,3 +24,6 @@ cmake  ../opencv-4.x
  
 # Build
 cmake --build .
+
+cd $SCRIPT_DIR
+rm -r $SCRIPT_DIR/opencv_install

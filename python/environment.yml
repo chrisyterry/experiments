@@ -7,6 +7,7 @@ channels: # places to get packages from
 dependencies: # packages to install
   - numpy # arrays
   - pip
+  - plotly
   - pip: # pip packages
     - opencv-python # image manipulation and anlysis
     - pyyml # yaml file manipulation

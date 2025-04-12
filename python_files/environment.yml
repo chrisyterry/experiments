@@ -1,0 +1,24 @@
+# to create a conda environment:
+#   conda env create --file=<environment_yml>
+# to delete
+#   conda remove -n ENV_NAME --all
+name: dev # name of the environment to create
+channels: # places to get packages from
+  - conda-forge
+  - default
+  - nvidia
+  - pytorch
+dependencies: # packages to install
+  - numpy # arrays
+  - pip
+  - pip: # have to have torch in its own pip section otherwise pip errors; pytorch takes a few mins to install411
+    - --pre
+    - --extra-index-url https://download.pytorch.org/whl/nightly/cu128 # will want to change to using the stable version when available
+    - torch # neural networks
+    - torchvision # Neural networks for working with image data
+    - torchaudio # Neural networks for working with audio signals
+    - plotly # 3D plotting
+    - opencv-python # image manipulation and anlysis; import cv2
+    - pyyml # yaml file manipulation; import yaml
+    - matplotlib # matlab-style plotting and visualization
+    - scipy # numerical tools (optimizers, interpoltaion, lin alg etc.)

@@ -49,3 +49,12 @@ fi
 # remove temp directory and return to start directory
 cd $SCRIPT_DIR
 rm -r $SCRIPT_DIR/cuda_install
+
+# get the directory two levels up (will need modifying if this script is ever moved)
+parent=$(dirname $SCRIPT_DIR)
+grandparent=$(dirname $parent)
+
+# get the cuda version installed in the format XXY where X is major version and Y is minor version
+cuda_python_version=$(nvcc --version | grep "release " | grep -P '\d+.\d+' -o | head -n 1 | sed 's/\.//')
+# update the environment.yml to install the version of torch that is compatible with this 
+sed -i -E -e "s/cu[0-9]{3}/cu${cuda_python_version}/" "$grandparent/python/environment.yml"

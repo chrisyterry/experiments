@@ -4,6 +4,7 @@
 # 2D polygons
 
 import numpy as np
+import transforms as tf
 """
 class defining a line segment and various useful methods for working with line segments
 """
@@ -11,19 +12,27 @@ class LineSegment:
     pass
 
 class BoundingBox:
-    _max_point=np.zeros(3) # maximum extent on each axis
-    _min_point=np.zeros(3) # minimum extend on each axis
+    _points = np.zeros((2,3)) # first row is min, second row is max
+    _transform=None # transform from world coordinate frame, np
+    _transform_inv=None
 
     # construct bounding box from pre-specified points
-    def __init__(self, max_point:np.array, min_point:np.array):
+    def __init__(self, min_point:np.array, max_point:np.array, transform=None):
 
         assert len(max_point.shape) == 1 and len (min_point.shape) == 1
         assert max_point.shape[0] == min_point.shape[0] and max_point.shape[0]
 
-        self._max_point = max_point
-        self._min_point = min_point
+        self._points = np.vstack((min_point, max_point))
 
-    def pointInBox(self, point:np.array):
+        # set transform
+        if not transform is None:
+            assert (len(transform.shape) == 2) and (transform.shape[0] == transform.shape[1])
+            assert (self._points.shape[1] + 1) == transform.shape[0]
+            self._transform = transform
+            self._transform_inv = np.linalg.inv(self._transform)
+
+    # determine if point is within bbounding box; point is assumed to be in box coordinates
+    def pointInBox(self, point:np.array) -> bool:
         assert len(point.shape) == 1 and point.shape[0] == self._max_point.shape[0]
 
         for i in range(0, point.shape[0]):
@@ -31,7 +40,61 @@ class BoundingBox:
                 return False
             
         return True
+    
+    # determine if the specified ray intersects the bounding box (based on https://tavianator.com/2022/ray_box_boundary.html)
+    # ray is assumed to be in box coordinates
+    def rayBoxIntersect(self, ray_origin:np.array, direction:np.array) -> float:
+        t_min = 0.0
+        t_max = float('inf')
+        # for each dimension
+        for i in range(0,3):
+            dir_inv = 1/direction[i]
 
+            # determine which points to use as min and max
+            sign_bit = dir_inv > 0
+            box_min = self._points[int(not sign_bit),i]
+            box_max = self._points[int(sign_bit), i]
+
+            d_min = (box_min - ray_origin[i]) * dir_inv
+            d_max = (box_max - ray_origin[i]) * dir_inv
+
+            t_min = max(d_min, t_min)
+            t_max = min(d_max, t_max)
+
+        return t_min < t_max
+    
+    def getRenderingPoints(self):
+
+        min_point = self._points[0,:]
+        max_point = self._points[1,:]
+        render_points = np.array([[min_point[0], min_point[1], min_point[2]],
+                                [max_point[0], min_point[1], min_point[2]], 
+                                [max_point[0], max_point[1], min_point[2]],
+                                [min_point[0], max_point[1], min_point[2]],
+                                [min_point[0], min_point[1], min_point[2]], # end of first level
+                                [min_point[0], min_point[1], max_point[2]],
+                                [max_point[0], min_point[1], max_point[2]],
+                                [max_point[0], min_point[1], min_point[2]],
+                                [max_point[0], min_point[1], max_point[2]],
+                                [max_point[0], max_point[1], max_point[2]],
+                                [max_point[0], max_point[1], min_point[2]],
+                                [max_point[0], max_point[1], max_point[2]],
+                                [min_point[0], max_point[1], max_point[2]],
+                                [min_point[0], max_point[1], min_point[2]],
+                                [min_point[0], max_point[1], max_point[2]],
+                                [min_point[0], min_point[1], max_point[2]]]) # end of second level)
+
+        # transform the points to world coordinates
+        if self._transform is not None:
+
+            transformed_points = np.zeros(render_points.shape)
+
+            for row in range(0, render_points.shape[0]):
+                transformed_points[row, :] = tf.transformPoint(render_points[row, :], self._transform)
+
+            render_points = transformed_points
+
+        return render_points
 class Triangle:
     _v0=np.zeros(3) # vertex 0
     _v1=np.zeros(3) # vertex 1
@@ -113,6 +176,9 @@ class Triangle:
         barycentric_pt[2] = 1 - barycentric_pt[0] - barycentric_pt[1]
 
         return barycentric_pt
+    
+    def getRenderingPoints(self):
+        return np.array([self._v0, self._v1, self._v2])
 
 class Polygon2D:
 

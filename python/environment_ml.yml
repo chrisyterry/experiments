@@ -2,7 +2,7 @@
 #   conda env create --file=<environment_yml>
 # to delete
 #   conda remove -n ENV_NAME --all
-name: dev # name of the environment to create
+name: dev-ml # name of the environment to create
 channels: # places to get packages from
   - conda-forge
   - default
@@ -10,6 +10,7 @@ channels: # places to get packages from
   - pytorch
 dependencies: # packages to install
   - numpy # arrays
+  - pandas # data anlaysis
   - pip
   - pip: # have to have torch in its own pip section otherwise pip errors; pytorch takes a few mins to install411
     - --pre

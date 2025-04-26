@@ -1,0 +1,21 @@
+# to create a conda environment:
+#   conda env create --file=<environment_yml>
+# to delete
+#   conda remove -n ENV_NAME --all
+name: dev # name of the environment to create
+channels: # places to get packages from
+  - conda-forge
+  - default
+  - nvidia
+  - pytorch
+dependencies: # packages to install
+  - numpy # arrays
+  - pandas # data anlaysis
+  - random # random numbers
+  - pip
+  - pip: # have to have torch in its own pip section otherwise pip errors; pytorch takes a few mins to install411
+    - plotly # 3D plotting
+    - opencv-python # image manipulation and anlysis; import cv2
+    - pyyml # yaml file manipulation; import yaml
+    - matplotlib # matlab-style plotting and visualization
+    - scipy # numerical tools (optimizers, interpoltaion, lin alg etc.)

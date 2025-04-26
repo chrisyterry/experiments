@@ -73,6 +73,10 @@ def transform3DTo2D(transform: np.array):
 efficently(?) transform a vector using a homogenous transform
 """
 def transformVector(point: np.array, transform: np.array, applyOffset=True):
+    
+    if transform is None:
+       return point
+
     assert transform.shape[0] == transform.shape[1]
     assert len(point.shape) == 1 and point.shape[0] == transform.shape[1] - 1
 

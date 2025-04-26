@@ -31,7 +31,7 @@ class BoundingBox:
             self._transform = transform
             self._transform_inv = np.linalg.inv(self._transform)
 
-    # determine if point is within bbounding box; point is assumed to be in box coordinates
+    # determine if point is within bounding box; point is assumed to be in box coordinates
     def pointInBox(self, point:np.array) -> bool:
         assert len(point.shape) == 1 and point.shape[0] == self._max_point.shape[0]
 
@@ -61,7 +61,7 @@ class BoundingBox:
             t_min = max(d_min, t_min)
             t_max = min(d_max, t_max)
 
-        return t_min < t_max
+        return t_min <= t_max
     
     def getRenderingPoints(self):
 
@@ -90,7 +90,7 @@ class BoundingBox:
             transformed_points = np.zeros(render_points.shape)
 
             for row in range(0, render_points.shape[0]):
-                transformed_points[row, :] = tf.transformPoint(render_points[row, :], self._transform)
+                transformed_points[row, :] = tf.transformVector(render_points[row, :], self._transform)
 
             render_points = transformed_points
 

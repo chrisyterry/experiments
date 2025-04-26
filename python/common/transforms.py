@@ -94,7 +94,7 @@ def transformVector(point: np.array, transform: np.array, applyOffset=True):
             if applyOffset:
                transformed_point[0] += transform[3, 0]
                transformed_point[1] += transform[3, 1]
-               transformed_point[1] += transform[3, 2]
+               transformed_point[2] += transform[3, 2]
         case _:
           raise ("point size of " + point.shape[1] + " is not supported!")
 

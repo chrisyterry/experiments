@@ -19,6 +19,7 @@ dependencies: # packages to install
     - torchvision # Neural networks for working with image data
     - torchaudio # Neural networks for working with audio signals
     - plotly # 3D plotting
+    - kaleido # generating images from plotly plots
     - opencv-python # image manipulation and anlysis; import cv2
     - pyyml # yaml file manipulation; import yaml
     - matplotlib # matlab-style plotting and visualization

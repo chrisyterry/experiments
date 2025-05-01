@@ -5,6 +5,7 @@
 
 import numpy as np
 import transforms as tf
+import misc
 
 class Shape:
     _transform = None # transform of shape from refernce coordinate system
@@ -26,12 +27,65 @@ class Shape:
             render_points = transformed_points
 
         return render_points
+    
+    def _transform(self, tform:np.array):
+        if self._transform is not None:
+            self._transform = tf.combineTransforms(self._transform, tform)
+            self._transform_inv = np.linalg.inv(self._transform)
+
 
 """
-class defining a line segment and various useful methods for working with line segments
+class defining a line either as a segment or a ray
 """
-class LineSegment(Shape):
-    pass
+class Line(Shape):
+    _start=np.zeros(2)
+    _direction=np.zeros(2)
+    _end=None
+    def __init__(self, start:np.array, direction=None, end=None, tform:np.array=None):
+
+        assert len(start.shape) == 1
+        self._start = start
+
+        # if a driection has been specified
+        if direction is not None:
+            assert isinstance(direction, np.ndarray)
+            assert len(direction.shape) == 1 and direction.shape[0] == self._start.shape[0]
+            self._direction = direction
+        elif end is not None:
+            assert isinstance(end, np.ndarray)
+            assert len(end.shape) == 1 and end.shape[0] == self._start.shape[0]
+            self._end = end
+            self._direction = self._end - self._start
+
+        Shape.__init__(self, start.shape[0], tform)
+
+    def dimensions(self):
+        return self._start.shape[0]
+    
+    def transformed(self, tform:np.array):
+        assert len(tform.shape) == 2 and tform.shape[0] == tform.shape[1]
+        assert tform.shape[0] == self._start.shape[0] + 1
+
+        start = tf.transformVector(self._start, tform)
+        if self._end is not None:
+            end = tf.transformVector(self._end, tform)
+            return Line(start, None, end)
+        else:
+            direction = tf.transformVector(self._direction, tform, False)
+            return Line(start, direction)
+        
+    def transform(self, tform:np.array):
+        assert len(tform.shape) == 2 and tform.shape[0] == tform.shape[1]
+        assert tform.shape[0] == self._start.shape[0] + 1
+
+        self._start = tf.transformVector(self._start, tform)
+        self._direction = tf.transformVector(self._direction, tform, False)
+        if self._end is not None:
+            self._end = tf.transformVector(self._end, tform)
+
+    def __str__(self):
+        return "\n\tstart: " + str(self._start) + "\n\tend: " + str(self._end) + "\n\tdirection: " + str(self._direction)
+        
 
 class BoundingBox(Shape):
     _points = np.zeros((2,3)) # first row is min, second row is max
@@ -45,6 +99,9 @@ class BoundingBox(Shape):
 
         self._points = np.vstack((min_point, max_point))
 
+    def __str__(self):
+        return "\n\tmin: " + str(self._points[0,:]) + "\n\tmax: " + str(self._points[1,:])
+
     # determine if point is within bounding box; point is assumed to be in box coordinates
     def pointInBox(self, point:np.array) -> bool:
         assert len(point.shape) == 1 and point.shape[0] == self._max_point.shape[0]
@@ -57,20 +114,23 @@ class BoundingBox(Shape):
     
     # determine if the specified ray intersects the bounding box (based on https://tavianator.com/2022/ray_box_boundary.html)
     # ray is assumed to be in box coordinates
-    def rayIntersect(self, ray_origin:np.array, direction:np.array) -> float:
+    def rayIntersect(self, ray:Line) -> float:
+
+        assert self._points.shape[1] == ray.dimensions()
+
         t_min = 0.0
         t_max = float('inf')
         # for each dimension
         for i in range(0,3):
-            dir_inv = 1/direction[i]
+            dir_inv = 1/ray._direction[i]
 
             # determine which points to use as min and max
             sign_bit = dir_inv > 0
             box_min = self._points[int(not sign_bit),i]
             box_max = self._points[int(sign_bit), i]
 
-            d_min = (box_min - ray_origin[i]) * dir_inv
-            d_max = (box_max - ray_origin[i]) * dir_inv
+            d_min = (box_min - ray._start[i]) * dir_inv
+            d_max = (box_max - ray._start[i]) * dir_inv
 
             t_min = max(d_min, t_min)
             t_max = min(d_max, t_max)
@@ -142,13 +202,15 @@ class Triangle(Shape):
         self._barycentric_denom_inv = 1/barycentric_denom
         self._plane_normal = np.cross(self._e01, self._e02)
 
+    def __str__(self):
+        return "\n\tv0: " + str(self._v0) + "\n\tv1: " + str(self._v1) + "\n\tv2: " + str(self._v2)
+
     # find the intersect between the triangle and the ray (assumes ray is in triangle coordinates)
-    def rayIntersect(self, ray_origin:np.array, ray_direction:np.array):
-        assert len(ray_origin.shape) == 1 and len(ray_direction.shape) == 1
-        assert ray_origin.shape[0] == ray_direction.shape[0] and ray_origin.shape[0] == self._v0.shape[0]
+    def rayIntersect(self, ray:Line):
+        assert ray.dimensions() == self._v0.shape[0]
 
         # normalize the ray direction
-        unit_direction = ray_direction / np.atleast_1d(np.linalg.norm(ray_direction, 2, -1))
+        unit_direction = ray._direction / np.atleast_1d(np.linalg.norm(ray._direction, 2, -1))
 
         # if ray is pretty much parallel to the triangle plane
         denominator = np.dot(self._plane_normal, unit_direction)
@@ -156,8 +218,8 @@ class Triangle(Shape):
             return None
         
         # get the intersect between the ray and the triangle plane
-        t = np.dot(self._plane_normal, (self._v0 - ray_origin))
-        intersect = ray_origin + t * unit_direction
+        t = np.dot(self._plane_normal, (self._v0 - ray._start))
+        intersect = ray._start + t * unit_direction
 
         # determine if the itnersect is within the bounds of the triangle
         barycentric_intersect = self.pointToBarycentric(intersect)
@@ -205,33 +267,32 @@ def main():
   import plotly.graph_objects as go
 
   # test bounding box
-  tform_box = tf.create3DTransformFromOffsets(radians(35), radians(30), radians(35), -0.5, -0.5, 1)
+  tform_box = tf.create3DTransformFromOffsets(radians(30), radians(30), radians(30), -0.5, -0.5, 1)
   test_box = BoundingBox(np.array((-1, -1, -1)), np.array((1, 1, 1)), tform_box)
 
-  print("box transform", test_box._transform)
+  #print("box transform", test_box._transform)
 
   # test triangle
   tform_triangle = tf.create3DTransformFromOffsets(radians(45), radians(60), radians(45), 0, 0, 1.5)
   test_triangle = Triangle(np.array([0,0,0]), np.array([1,0,0]), np.array([1,1,0]), tform_triangle)
 
-  print("triangle transform", test_triangle._transform)
+  #print("triangle transform", test_triangle._transform)
 
-  # test line
-  test_line_start = np.array((0, 0 ,0))
-  test_line_end = np.array((1,0,0))
-  tform_line = tf.create3DTransformFromOffsets(radians(0), radians(0), radians(0), 0, 0, 2.1)
-  test_line_start = tf.transformVector(test_line_start, tform_line)
-  test_line_end = tf.transformVector(test_line_end, tform_line)
+  # test ray
+  test_line = Line(np.array((0, 0 ,0)), None, np.array((1,0,0))) # specify line with an ends
+  tform_line = tf.create3DTransformFromOffsets(radians(0), radians(0), radians(0), 0, 0, 1)
+  test_line.transform(tform_line)
 
   # triangle intersect test, arbitrary placement
-  test_line_start_triangle = tf.transformVector(test_line_start, test_triangle._transform_inv)
-  test_line_end_triangle = tf.transformVector(test_line_end, test_triangle._transform_inv)
-  triangle_intersect = not (test_triangle.rayIntersect(test_line_start_triangle, test_line_end_triangle - test_line_start_triangle) is None)
+  test_line_triangle = test_line.transformed(test_triangle._transform_inv)
+  triangle_intersect = not (test_triangle.rayIntersect(test_line_triangle) is None)
+  print("triangle: ", test_triangle)
 
   # bounding box intersect test, arbitrary placement
-  test_line_start_box = tf.transformVector(test_line_start, test_box._transform_inv)
-  test_line_end_box = tf.transformVector(test_line_end, test_box._transform_inv)
-  box_intersection = test_box.rayIntersect(test_line_start_box, test_line_end_box - test_line_start_box)
+  test_line_box = test_line.transformed(test_box._transform_inv)
+  print("line: ", test_line_box)
+  box_intersection = test_box.rayIntersect(test_line_box)
+  print("box: ", test_box)
 
   non_intersect_color = "rgb(255,0,0)"
   intersect_color = "rgb(0,255,0)"
@@ -242,9 +303,8 @@ def main():
      box_color=intersect_color
   if (triangle_intersect):
       triangle_color=intersect_color
-    
 
-  line_data=np.vstack([test_line_start, test_line_end])
+  line_data=np.vstack([test_line._start, test_line._end])
 
   test_box_points = test_box.getRenderingPoints()
   test_triangle_points = test_triangle.getRenderingPoints()
@@ -258,6 +318,10 @@ def main():
   fig.add_trace(line_1)
   makeAxesEqual(fig)
   fig.show()
+
+  # ToDo fix everything to work with new line class
+  # write cylinder intersect test
+  # write min distance to line 
 
 if __name__ == '__main__':
     main()

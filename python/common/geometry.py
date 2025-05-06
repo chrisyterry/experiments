@@ -6,6 +6,7 @@
 import numpy as np
 import transforms as tf
 import misc
+import plotting as plt
 
 class Shape:
     _transform = None # transform of shape from refernce coordinate system
@@ -82,6 +83,9 @@ class Line(Shape):
         self._direction = tf.transformVector(self._direction, tform, False)
         if self._end is not None:
             self._end = tf.transformVector(self._end, tform)
+
+    def getRenderingPoints(self):
+        return np.vstack([self._start, self._end])
 
     def __str__(self):
         return "\n\tstart: " + str(self._start) + "\n\tend: " + str(self._end) + "\n\tdirection: " + str(self._direction)
@@ -263,8 +267,6 @@ class Polygon2D(Shape):
 # test code
 def main():
   from math import radians
-  from plotting import makeAxesEqual
-  import plotly.graph_objects as go
 
   # test bounding box
   tform_box = tf.create3DTransformFromOffsets(radians(30), radians(30), radians(30), -0.5, -0.5, 1)
@@ -304,19 +306,10 @@ def main():
   if (triangle_intersect):
       triangle_color=intersect_color
 
-  line_data=np.vstack([test_line._start, test_line._end])
-
-  test_box_points = test_box.getRenderingPoints()
-  test_triangle_points = test_triangle.getRenderingPoints()
-
-  box_1 = go.Scatter3d(x=test_box_points[:,0], y=test_box_points[:,1], z=test_box_points[:,2], mode='lines',line=dict(color=box_color))
-  triangle_1 = go.Scatter3d(x=test_triangle_points[:,0], y=test_triangle_points[:,1], z=test_triangle_points[:,2], mode='lines',line=dict(color=triangle_color))
-  line_1 = go.Scatter3d(x=line_data[:,0], y=line_data[:,1], z=line_data[:,2], mode='lines',line=dict(color="rgb(0,0,0)"))
-  fig = go.Figure()
-  fig.add_trace(box_1)
-  fig.add_trace(triangle_1)
-  fig.add_trace(line_1)
-  makeAxesEqual(fig)
+  box_1 = (test_box, dict(color=box_color))
+  triangle_1 =(test_triangle, dict(color=triangle_color))
+  line_1 = (test_line, dict(color="rgb(0,0,0)"))
+  fig = plt.plotObjects([box_1, triangle_1, line_1])
   fig.show()
 
   # ToDo fix everything to work with new line class

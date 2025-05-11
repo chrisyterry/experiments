@@ -174,7 +174,6 @@ class Pose:
     def transformedPose(self, transform:np.array):
        assert self.position.shape[0] == (transform.shape[0] - 1)
        new_pose = copy.deepcopy(self)
-       print(new_pose)
        new_pose.transformPose(transform)
 
        return new_pose

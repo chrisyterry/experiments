@@ -60,7 +60,6 @@ class PoseGenerator:
        # generate the number of children to generate for the node
        num_children = (self._constraints["children"].generate())[0]
 
-    print(num_children)
     children = {}
 
     # generate coordinate changes for each child
@@ -201,10 +200,18 @@ class Node:
     plotting_points = self._data["pose"].position
     # for each child
     for child in self._children:
-      # add the points for the child
-      np.vstack((plotting_points, self._children[child].getRenderingPoints()))
-      # add the point for this node to make it a clean branch
-      np.vstack((plotting_points, self._data["pose"].position))
+      if isinstance(self._children[child], list):
+        for sub_child in self._children[child]:
+          print("sub childlren:",self._children[child])
+          # add the points for the child
+          plotting_points = np.vstack((plotting_points, sub_child.getRenderingPoints()))
+          # add the point for this node to make it a clean branch
+          plotting_points = np.vstack((plotting_points, self._data["pose"].position))
+      else:
+        # add the points for the child
+        plotting_points = np.vstack((plotting_points, self._children[child].getRenderingPoints()))
+        # add the point for this node to make it a clean branch
+        plotting_points = np.vstack((plotting_points, self._data["pose"].position))
 
     return plotting_points
 
@@ -239,32 +246,40 @@ class NodeGraph:
    """
    points = self._nodes[0]._data["pose"].position
    for node in self._nodes:
-      # add the points for the node
-      points = np.vstack((points, self._nodes[node].getRenderingPoints()))
-      # add the current node to make things neat and tidy
-      points = np.vstack((points, self._nodes[0]._data["pose"].position))
+      if isinstance(self._nodes[node], list):
+        for sub_node in self._nodes[node]:
+          # add the points for the node
+          points = np.vstack((points, sub_node.getRenderingPoints()))
+          # add the current node to make things neat and tidy
+          points = np.vstack((points, self._nodes[0]._data["pose"].position))
+      else:
+        # add the points for the node
+        points = np.vstack((points, self._nodes[node].getRenderingPoints()))
+        # add the current node to make things neat and tidy
+        points = np.vstack((points, self._nodes[0]._data["pose"].position))
+
 
    return points
 
 def main():
 
   # set our max translation in ground-plane
-  min_translation_gp = 3 # m
-  max_translation_gp = 20 # m
+  min_translation_gp = -1 # m
+  max_translation_gp = 1 # m
   # set our max translation vertically
   min_translation_vt = -1 # m
   max_translation_vt = 1 # m
 
   # set our max angle change
-  min_ang = radians(-30)
-  max_ang = radians(30)
-  ang_res = radians(5)
+  min_ang = radians(-90)
+  max_ang = radians(90)
+  ang_res = radians(90)
 
   ang_generator = rando.UniformGenerator(min_ang, max_ang, ang_res)
-  ground_generator = rando.UniformGenerator(min_translation_gp, max_translation_gp)
-  elevation_generator = rando.UniformGenerator(min_translation_vt, max_translation_vt)
+  ground_generator = rando.UniformGenerator(min_translation_gp, max_translation_gp,1)
+  elevation_generator = rando.UniformGenerator(min_translation_vt, max_translation_vt,1)
   depth_generator = rando.ConstantGenerator(5)
-  child_generator = rando.UniformGenerator(1, 7, 1)
+  child_generator = rando.UniformGenerator(3, 3, 1)
 
   constraints = {"roll" : ang_generator,
                  "pitch" : ang_generator,

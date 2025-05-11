@@ -27,6 +27,7 @@ def plotObjects(objects:list):
    # for each object (assumed to be a tuple with an object in the first slot and an optional settings vector in the second slot)
    for object in objects:
       object_plot_points = object[0].getRenderingPoints()
+      print(object_plot_points)
       object_plot = go.Scatter3d(x=object_plot_points[:,0], y=object_plot_points[:,1], z=object_plot_points[:,2], mode='lines', line = object[1]) # line=dict(color=triangle_color)
       fig.add_trace(object_plot)
 

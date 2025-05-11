@@ -1,6 +1,7 @@
 from math import radians
 import numpy as np
-from math import cos, sin, comb, asin, acos
+import copy
+from math import cos, sin, comb, asin, acos, atan2
 
 # row-major transforms can be combined by doing T1xT2xT3
 
@@ -113,9 +114,9 @@ class Pose:
     orientation = np.zeros(3) # unit vector capturing orienation of pose
     transform = None # transform that is equivalent to this pose
 
-    # constructor from pose from position and orientation
+    # constructor from pose from position and RPY orientations
     def __init__(self, position: np = np.zeros(3), orientation: np.array = np.zeros(3)):
-      self.setPositionAndOrientation(position, orientation)
+      self.setFromOrientationAndTranslation(position, orientation)
 
     # to string method for printing easily
     def __str__(self):
@@ -148,7 +149,7 @@ class Pose:
     def setFromTransform(self, transform: np.array):
        assert len(transform.shape) == 2 and transform.shape[0] == transform.shape[1]
 
-       # size the position and oreintation
+       # size the position and orientation
        self.position = np.zeros(transform.shape[0]-1)
        self.orientation = np.zeros(transform.shape[0]-1)
        self.orientation[0] = 1
@@ -161,13 +162,34 @@ class Pose:
        self.transform = transform
     
     # transform the pose using the specified transformation matrix
-    def transform(self, transform:np.array):
+    def transformPose(self, transform:np.array):
       assert self.position.shape[0] == (transform.shape[0] - 1)
 
       # get the new position of the pose
       self.position = transformVector(self.position, transform)
       self.orientation = transformVector(self.orientation, transform, False)
       self.transform = np.matmul(self.transform, transform)
+
+    # create a new pose that is this pose with the specified transform applied
+    def transformedPose(self, transform:np.array):
+       assert self.position.shape[0] == (transform.shape[0] - 1)
+       new_pose = copy.deepcopy(self)
+       print(new_pose)
+       new_pose.transformPose(transform)
+
+       return new_pose
+       
+    # get the angles for the pose
+    def getAngles(self):
+      dimension = 0
+      angles = []
+      for i in range(1, self.orientation.shape[0]):
+         for j in range(0,i):
+            angles[dimension] = atan2(self.orientation[i], self.orientation[j])
+            dimension += 1
+
+      return angles 
+
 
 # test code
 

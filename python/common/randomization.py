@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 #todo make this a nice class hierarchy with an interface
 
@@ -20,11 +21,7 @@ class UniformGenerator:
     Generates values in the specified range with the specified resolution
     """
 
-    _min = 0 # minimum value
-    _max = 0 # maximum value
-    _max_min_dif = None # difference between maximum and minimum value
-    _res = None # resolution of output
-    def __init__(self, min:float, max:float, res=None):
+    def __init__(self, min:float, max:float, res=None, duplicates=True):
         """
         generate a random value in the specified range to the specified resolution using the uniform distribution
 
@@ -35,9 +32,14 @@ class UniformGenerator:
         """
         self._min = min
         self._max = max
+
+        #if a resolution has been specified
         if res is not None:
             self._max_min_dif = (max - min) / res
             self._res = res
+            # record info for duplicateless generation (only works if a res has been specified)
+            self._duplicates = duplicates
+            self._possible_values = min + (np.array(range(0, math.floor(max/res) + 1))) * res 
     
     # generate the specified number of samples
     def generate(self, n=1):
@@ -49,15 +51,41 @@ class UniformGenerator:
         
         # if a resolution has been specified
         else:
-            values = np.random.uniform(0, 1, n)
-            min = np.full(n, self._min)
-            return min + np.round(values * self._max_min_dif) * self._res
+            # if duplicates are permitted
+            if self._duplicates:
+                # generate N samples in the 0-1 range and scale accordingly
+                values = np.random.uniform(0, 1, n)
+                min = np.full(n, self._min)
+                return min + np.round(values * self._max_min_dif) * self._res
+            
+            # if duplicates are not permitted
+            else:
+                output = np.zeros(n)
+                output_entry = 0
+                available_values = self._possible_values 
+                max_index = len(available_values) - 1
+                for i in range(n):
+                    # generate an index using the distribution
+                    selection_index = round(np.random.uniform(0, 1) * max_index)
+
+                    # add the value corresponding to the index
+                    output[output_entry] = available_values[selection_index]
+
+                    # move the value to the end of the list
+                    available_values[selection_index], available_values[max_index] = available_values[max_index], available_values[selection_index]
+
+                    # reduce the number of remaining values and bump the entry 
+                    if max_index == 0:
+                        max_index = len(available_values) - 1
+                    else:
+                        max_index += -1
+                    output_entry += 1
+
+                return output
+
+
 
 class NormalGenerator:
-    _mean = 0 # mean value
-    _std = 0 # std deviation value
-    _res = None # resolution (if specified)
-    _res_inv = None # inverse of resolution (if specified)
     def __init__(self, mean, std, res = None):
         self._mean = mean
         self._std = std
@@ -81,28 +109,50 @@ class NormalGenerator:
             return values
 
 class BetaGenerator:
-    _alpha = 0 # the alpha parameter
-    _beta = 0 # the beta parameter
-    _max_min_dif = 0 # difference between maximum and minimum value divided by the resolution
-    _min = 0 # the minimum value for the distribution
-    _res = None # resolution (if specified)
-    def __init__(self, alpha, beta, min, max, res = None):
+    def __init__(self, alpha, beta, min, max, res = None, duplicates=True):
         self._alpha = alpha
         self._beta = beta
         self._max_min_dif = max-min
         self._min = min
 
+        # if a resolution has been specified
         if res is not None:
             self._res = res
             self._max_min_dif = self._max_min_dif/res
+            # record info for duplicateless generation (only works if a res has been specified)
+            self._duplicates = duplicates
+            self._possible_values = min + (np.array(range(0, math.floor(max/res) + 1))) * res 
 
     def generate(self, n=1):
-        # generate values from teh distribution
-        values = np.random.beta(self._alpha, self._beta, n)
+        # generate values from the distribution
+        values = np.zeros(n) 
 
         if self._res is not None:
-            values = np.round(values * self._max_min_dif) * self._res
-        else:
-            values = values * self._max_min_dif
+            if self._duplicates:
+                samples = np.random.beta(self._alpha, self._beta, n)
+                values = self._min + np.round(samples * self._max_min_dif) * self._res             
+            else:
+                output_entry = 0
+                available_values = self._possible_values 
+                max_index = len(available_values) - 1
+                for i in range(n):
+                    # generate an index using the distribution
+                    selection_index = round(np.random.beta(self._alpha, self._beta) * max_index)
 
-        return np.full(n, self._min) + values
+                    # add the value corresponding to the index
+                    values[output_entry] = available_values[selection_index]
+
+                    # move the value to the end of the list
+                    available_values[selection_index], available_values[max_index] = available_values[max_index], available_values[selection_index]
+
+                    # reduce the number of remaining values and bump the entry 
+                    if max_index == 0:
+                        max_index = len(available_values) - 1
+                    else:
+                        max_index += -1
+                    output_entry += 1
+                
+        else:
+            values = self._min + np.random.beta(self._alpha, self._beta, n) * self._max_min_dif
+
+        return values

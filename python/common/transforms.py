@@ -110,9 +110,6 @@ def combineTransforms(first_transform:np.array, second_transform:np.array):
    return np.matmul(second_transform, first_transform)
 
 class Pose:
-    position = np.zeros(3)  # likely (but not strictly) meters
-    orientation = np.zeros(3) # unit vector capturing orienation of pose
-    transform = None # transform that is equivalent to this pose
 
     # constructor from pose from position and RPY orientations
     def __init__(self, position: np = np.zeros(3), orientation: np.array = np.zeros(3)):
@@ -128,6 +125,8 @@ class Pose:
        # orienations are related to pairs of axes)
        assert orientation.shape[0] == comb(position.shape[0], 2)
 
+       self.position = position
+
        # get the transform corresponding to this pose
        transform=None
        match position.shape[0]:
@@ -141,7 +140,6 @@ class Pose:
        base_orientation = np.zeros(self.position.shape[0])
        base_orientation[0] = 1
 
-       self.position = position
        self.transform = transform
        self.orientation = transformVector(base_orientation, self.transform, False)
 

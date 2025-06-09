@@ -32,6 +32,7 @@ class PoseGenerator:
                "lin_dist": 1}
    _goal_tolerances = {"ang_dist": 1,  # tolerances on goal pose for snapping to the goal pose
                        "lin_dist": 0}
+   __debug_out = False
 
    def __init__(self, constraints: dict, weights: dict = None, goal_tolerances: dict = None):
       self._constraints = constraints
@@ -61,6 +62,11 @@ class PoseGenerator:
        num_children = (self._constraints["children"].generate())[0]
 
     children = {}
+    if self.__debug_out:
+      padding=""
+      for i in range(node._depth):
+        padding += "\t"
+      print(padding+"current node: position", node._data["pose"].position,"orientation",node._data["pose"].orientation)
 
     # generate coordinate changes for each child
     for child in range(0, int(num_children)):
@@ -77,9 +83,12 @@ class PoseGenerator:
        ty = (self._constraints["ty"].generate())[0]
        tz = (self._constraints["tz"].generate())[0]
 
-       # create a transform from the generated offsets and the corresponding pose
-       child_transform = tf.create3DTransformFromOffsets(roll, pitch, yaw, tx, ty, tz)
-       child_pose = node._data["pose"].transformedPose(child_transform)
+       # create child pose using gneretaed offsets
+       child_pose = tf.Pose(np.array((tx, ty, tz)), np.array((roll, pitch, yaw)))
+       child_pose.transformPose(node._data["pose"].transform)
+       if self.__debug_out:
+        print(padding+"\ttx:",tx,"ty:",ty,"tz",tz,"roll",degrees(roll),"pitch",degrees(pitch),"yaw",degrees(yaw))
+        print(padding+"\tchildnode: position", child_pose.position, "orientation", child_pose.orientation)
 
        # determine the distance of the child node to the target pose
        target_ang_dist = float(np.dot(child_pose.orientation, target.orientation))
@@ -113,7 +122,7 @@ class PoseGenerator:
        # if somehow, we have child nodes with the same weight
        if weight in children.keys():
           # if we only have 1 prior node
-          if not isinstance(children[weight], np.ndarray):
+          if not isinstance(children[weight], list):
             children[weight] = [children[weight], child_node]
           # if we have more than 1 prior node(!)
           else:
@@ -126,6 +135,7 @@ class PoseGenerator:
 
 # defines a node for a node graph search
 class Node:
+  __debug_out = False
   _data = {}  # data associated with the node
   _parent = None  # the parent of the node
   _children = {}  # children of the current node (ordered by weight)
@@ -198,11 +208,17 @@ class Node:
 
   def getRenderingPoints(self):
     plotting_points = self._data["pose"].position
+    if self.__debug_out:
+      padding = ""
+      for i in range(self._depth):
+        padding += "\t"
+      print(padding+"current node position:",plotting_points)
+      if len(self._children) > 0:
+        print(padding+"these are my children:")
     # for each child
     for child in self._children:
       if isinstance(self._children[child], list):
         for sub_child in self._children[child]:
-          print("sub childlren:",self._children[child])
           # add the points for the child
           plotting_points = np.vstack((plotting_points, sub_child.getRenderingPoints()))
           # add the point for this node to make it a clean branch
@@ -217,6 +233,7 @@ class Node:
 
 
 class NodeGraph:
+  __debug_out = False
   _nodes = None  # nodes associated with the nodegraph
   _generator = None  # generator used to generate new nodes
 
@@ -245,16 +262,22 @@ class NodeGraph:
    get points to render the node graph
    """
    points = self._nodes[0]._data["pose"].position
+   if self.__debug_out:
+    print("current node position:",points)
+    print("these are my children:")
    for node in self._nodes:
       if isinstance(self._nodes[node], list):
-        for sub_node in self._nodes[node]:
+        for i in range(len(self._nodes[node])):
+          
           # add the points for the node
-          points = np.vstack((points, sub_node.getRenderingPoints()))
+          points = np.vstack((points, self._nodes[node][i].getRenderingPoints()))
+
           # add the current node to make things neat and tidy
           points = np.vstack((points, self._nodes[0]._data["pose"].position))
       else:
         # add the points for the node
         points = np.vstack((points, self._nodes[node].getRenderingPoints()))
+
         # add the current node to make things neat and tidy
         points = np.vstack((points, self._nodes[0]._data["pose"].position))
 
@@ -264,29 +287,31 @@ class NodeGraph:
 def main():
 
   # set our max translation in ground-plane
-  min_translation_gp = -1 # m
+  min_translation_gp = -2 # m
   max_translation_gp = 1 # m
   # set our max translation vertically
   min_translation_vt = -1 # m
-  max_translation_vt = 1 # m
+  max_translation_vt = -1 # m
 
   # set our max angle change
   min_ang = radians(-90)
   max_ang = radians(90)
   ang_res = radians(90)
 
-  ang_generator = rando.UniformGenerator(min_ang, max_ang, ang_res)
-  ground_generator = rando.UniformGenerator(min_translation_gp, max_translation_gp,1)
-  elevation_generator = rando.UniformGenerator(min_translation_vt, max_translation_vt,1)
-  depth_generator = rando.ConstantGenerator(5)
-  child_generator = rando.UniformGenerator(3, 3, 1)
+  x_generator = rando.UniformGenerator(1, 5,1, False)
+  y_generator = rando.UniformGenerator(0, 0,1, False)
+  z_generator = rando.UniformGenerator(0, 0,1, False)
+  ang_generator = rando.UniformGenerator(min_ang, max_ang, ang_res, False)
+  roll_generator = rando.ConstantGenerator(0)
+  depth_generator = rando.ConstantGenerator(10)
+  child_generator = rando.UniformGenerator(1, 2, 1)
 
-  constraints = {"roll" : ang_generator,
-                 "pitch" : ang_generator,
+  constraints = {"roll" : roll_generator,
+                 "pitch" : roll_generator,
                  "yaw" : ang_generator,
-                 "tx" : ground_generator,
-                 "ty" : ground_generator,
-                 "tz" : elevation_generator,
+                 "tx" : x_generator,
+                 "ty" : y_generator,
+                 "tz" : z_generator,
                  "max_depth" : depth_generator,
                  "children" : child_generator}
 
@@ -297,7 +322,7 @@ def main():
   start = tf.Pose(np.array((0,0,0)),np.array((0,0,0)))
 
   # set our goal point
-  goal = tf.Pose(np.array((3,3,3)),np.array((0,0,0)))
+  goal = tf.Pose(np.array((30,0,0)),np.array((0,0,0)))
 
   # generate the node graph
   print("generating")

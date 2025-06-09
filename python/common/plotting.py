@@ -1,4 +1,5 @@
 import plotly.graph_objects as go
+import numpy as np
 
 # make the axes of a plotly figure equal
 def makeAxesEqual(fig:go.Figure):
@@ -26,9 +27,28 @@ def plotObjects(objects:list):
    fig = go.Figure()
    # for each object (assumed to be a tuple with an object in the first slot and an optional settings vector in the second slot)
    for object in objects:
-      object_plot_points = object[0].getRenderingPoints()
-      object_plot = go.Scatter3d(x=object_plot_points[:,0], y=object_plot_points[:,1], z=object_plot_points[:,2], mode='lines', line = object[1]) # line=dict(color=triangle_color)
-      fig.add_trace(object_plot)
+      # geometry with plot settings
+      if isinstance(object, tuple):
+         object_plot_points = object[0].getRenderingPoints()
+         object_plot = go.Scatter3d(x=object_plot_points[:,0], y=object_plot_points[:,1], z=object_plot_points[:,2], mode='lines', line = object[1]) # line=dict(color=triangle_color)
+         fig.add_trace(object_plot)
+      # raw point(s)
+      elif isinstance(object, np.ndarray):
+         # multiple points
+         if len(object.shape) > 1:
+            object_plot = go.Scatter3d(x=object[:,0], y=object[:,1], z=object[:,2], mode='markers')
+            fig.add_trace(object_plot)
+         # single point
+         else:
+            object_plot = go.Scatter3d(x=[object[0]], y=[object[1]], z=[object[2]], mode='markers')
+            fig.add_trace(object_plot)
+
+      # object without plot settings
+      else:
+         print(object)
+         object_plot_points = object.getRenderingPoints()
+         object_plot = go.Scatter3d(x=object_plot_points[:,0], y=object_plot_points[:,1], z=object_plot_points[:,2], mode='lines')
+         fig.add_trace(object_plot)
 
    makeAxesEqual(fig)
    return fig

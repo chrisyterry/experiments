@@ -84,6 +84,84 @@ class Line(Shape):
         if self._end is not None:
             self._end = tf.transformVector(self._end, tform)
 
+    # based on https://stackoverflow.com/questions/2824478/shortest-distance-between-two-line-segments
+    def closestPoints(self, other):
+        """
+        Get the closest points on two line segments and the distance between them
+        """
+        
+        epsilon = 1e-6
+
+        # get required direction vectors
+        starts_dir = self._start - other._start
+
+        self_dir_sqrd = np.dot(self._direction,self._direction)
+        self_other_dir_dot = np.dot(self._direction, other._direction)
+        other_dir_sqrd = np.dot(other._direction, other._direction)
+        self_start_dir_dot = np.dot(self._direction, starts_dir)
+        other_starts_dir_dot = np.dot(other._direction, starts_dir)
+
+        determinant = (self_dir_sqrd * other_dir_sqrd) - (self_other_dir_dot * self_other_dir_dot)
+
+        # Parallel or colinear segments
+        if determinant < epsilon:
+            # find which end points are the closest
+            other_start_dist, closest_to_other_start = self.closestPoint(other._start, self)
+            other_end_dist, closest_to_other_end = self.closestPoint(other._end, self)
+            self_start_dist, closest_to_self_start = self.closestPoint(self._start, other)
+            self_end_dist, closest_to_self_end = self.closestPoint(self._end, other)
+
+            line_data = [(other_start_dist, closest_to_other_start, other._start),
+                         (other_end_dist, closest_to_other_end, other._end),
+                         (self_start_dist, self._start, closest_to_self_start),
+                         (self_end_dist, self._end, closest_to_self_end)]
+            
+            # get the closest pair of points and return
+            closest_data = min(line_data, key=lambda x: x[0])
+            return closest_data[0], closest_data[1], closest_data[2]
+
+        # non-parallel segments
+        else:
+            det_inv = 1/determinant
+
+            self_t_inf = (self_other_dir_dot * other_starts_dir_dot - other_dir_sqrd * self_start_dir_dot) * det_inv
+            other_t_inf = (self_dir_sqrd * other_starts_dir_dot - self_other_dir_dot * self_start_dir_dot) * det_inv
+
+            # clamp 
+            self_t_clamped = max(0.0, min(1.0, self_t_inf))
+            other_t_clamped = max(0.0, min(1.0, other_t_inf))
+
+            # if t has to be clamped for the other line
+            if self_t_clamped != self_t_inf:
+                other_t_clamped = (self_other_dir_dot * self_t_clamped - other_starts_dir_dot) / other_dir_sqrd if other_dir_sqrd > epsilon else other_t_clamped
+                other_t_clamped = min(0.0, min(1.0, other_t_clamped))
+
+            # if t has to be clamped for this line
+            if other_t_clamped != other_t_inf:
+                self_t_clamped = (self_other_dir_dot * other_t_clamped - self_start_dir_dot) / self_dir_sqrd if self_dir_sqrd > epsilon else self_t_clamped
+                self_t_clamped = max(0.0, min(1.0, self_t_inf))
+
+            closest_on_self = self._start + self_t_clamped * self._direction
+            closest_on_other = other._start + other_t_clamped * other._direction
+
+            return np.linalg.norm(closest_on_other - closest_on_self), closest_on_self, closest_on_other
+
+    def closestPoint(self, point:np.array, segment):
+        start_to_point = point - segment._start
+
+        seg_mag_sqrd = np.dot(segment._direction, segment._direction)
+        # segment is a single point
+        if seg_mag_sqrd == 0.0:
+            return self._start
+        
+        t = np.dot(start_to_point, segment._direction) / seg_mag_sqrd
+        t = max(0.0, min(1.0, t))
+
+        closest_point = self._start + t * segment._direction
+
+        return np.linalg.norm(closest_point - point), closest_point
+
+
     def getRenderingPoints(self):
         return np.vstack([self._start, self._end])
 
@@ -296,6 +374,12 @@ def main():
   box_intersection = test_box.rayIntersect(test_line_box)
   print("box: ", test_box)
 
+  # line minimum distance test
+  min_dist_line_1 = Line(np.array((1, 2, -1)), None, np.array((1, 1, 1)))
+  min_dist_line_2 = Line(np.array((3, -1, 0)), None, np.array((-1, 1, 0)))
+
+  dist, l1_pt, l2_pt = min_dist_line_1.closestPoints(min_dist_line_2)
+
   non_intersect_color = "rgb(255,0,0)"
   intersect_color = "rgb(0,255,0)"
 
@@ -309,7 +393,7 @@ def main():
   box_1 = (test_box, dict(color=box_color))
   triangle_1 =(test_triangle, dict(color=triangle_color))
   line_1 = (test_line, dict(color="rgb(0,0,0)"))
-  fig = plt.plotObjects([box_1, triangle_1, line_1])
+  fig = plt.plotObjects([box_1, triangle_1, line_1, min_dist_line_1, min_dist_line_2, l1_pt, l2_pt])
   fig.show()
 
   # ToDo fix everything to work with new line class

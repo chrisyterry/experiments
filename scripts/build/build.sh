@@ -8,3 +8,4 @@ mkdir "$SCRIPT_DIR/../../build/build"
 cd "$SCRIPT_DIR/../../build/build"
 cmake ..
 make
+cd $start_dir

@@ -31,4 +31,5 @@ rm -r /tmp/install
 rm /tmp/google_shader_compiler.tgz
 
 # verify that vulkan is working
+echo "if you can see a cube, the above all worked!"
 vkcube

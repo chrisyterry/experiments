@@ -46,3 +46,9 @@ for script in "$SCRIPT_DIR"/install_*.sh; do
     echo "Warning: $script not found."
   fi
 done
+
+
+# doxygen
+sudo apt-add-repository universe
+sudo apt-get update
+sudo apt-get install doxygen

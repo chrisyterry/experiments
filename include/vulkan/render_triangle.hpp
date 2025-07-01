@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <iostream>
+#include <optional>
 
 /**
  * @brief helper function to look up vkCreateDebugUtilsMessenger function to create a debug messenger
@@ -59,6 +60,22 @@ public:
 private:
 
     /**
+     * @brief structure to hold queue family indices
+     */
+    struct QueueFamilyIndices {
+        std::optional<uint32_t> graphics_family; ///< index for graphics queues
+
+        /**
+         * @brief whether the available queue families are complete
+         * 
+         * @return true if qeue families are complete
+         */
+        bool isComplete() {
+            return graphics_family.has_value();
+        }
+    };
+
+    /**
      * @brief Initialize a gflw window for vulkan to use
      */
     void initWindow();
@@ -89,6 +106,35 @@ private:
      * @return list of required extensions
      */
     std::vector<const char*> getRequiredExtensions();
+
+    /**
+     * @brief select physical devices to use
+     */
+    void selectPhysicalDevice();
+
+    /**
+     * @brief assign a score to the physical device based on its suitability for our purposes
+     * 
+     * @param device the physical device to check
+     * 
+     * @return integer suitability score for the device
+     */
+    uint32_t ratePhysicalDevice(VkPhysicalDevice device);
+
+    /**
+     * @brief find available queue families for the specified physical device
+     * 
+     * @param device the physical device to analyse
+     * 
+     * @return avialable queue families
+     */
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+
+    /**
+     * @brief deallocate resources
+     * @note we use manual deletion just to be clear about lifetimes of stuff here
+     */
+    void cleanup();
 
     /**
      * @brief check which validation layers are available
@@ -147,15 +193,10 @@ private:
         return VK_FALSE;
     }
 
-    /**
-     * @brief deallocate resources
-     * @note we use manual deletion just to be clear about lifetimes of stuff here
-     */
-    void cleanup();
-
-    VkDebugUtilsMessengerEXT m_debug_messenger; ///< manages debug callback, can have multiple of these
-    VkInstance m_vulkan_instance;               ///< instance of vulkan
-    GLFWwindow *m_window;                       ///< glfw window for rendering
+    VkDebugUtilsMessengerEXT m_debug_messenger;          ///< manages debug callback, can have multiple of these
+    VkInstance m_vulkan_instance;                        ///< instance of vulkan
+    VkPhysicalDevice m_physical_device = VK_NULL_HANDLE; ///< physical device to use
+    GLFWwindow *m_window;                                ///< glfw window for rendering
 
     // This has to be global/live beyond the scope of create instance for it to work
     const std::vector<const char*> m_validation_layers = {

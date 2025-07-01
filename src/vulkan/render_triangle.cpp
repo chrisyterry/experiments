@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdint.h>
 #include <cstring>
+#include <map>
 
 void TriangleRenderer::run() {
     initWindow(); // setup window
@@ -23,6 +24,92 @@ void TriangleRenderer::initWindow() {
     const uint16_t WINDOW_WIDTH = 800;
 
     m_window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Vulkan", nullptr, nullptr); // create a window named "vulkan", 4th param is monitor to render on, last parameter is OpenGL only
+}
+
+void TriangleRenderer::initVulkan() {
+    createInstance(); // create vulkan interface
+    setupDebugMessenger(); // setup debug layer messenger
+    selectPhysicalDevice(); // select physical device(s)
+}
+
+void TriangleRenderer::selectPhysicalDevice() {
+    uint32_t device_count = 0;
+    vkEnumeratePhysicalDevices(m_vulkan_instance, &device_count, nullptr);
+    if (device_count == 0) {
+        throw std::runtime_error("Could not find GPU with Vulkan support on system!");
+    }
+    // get the physical devices present on the system
+    std::vector<VkPhysicalDevice> devices(device_count);
+    vkEnumeratePhysicalDevices(m_vulkan_instance, &device_count, devices.data());
+
+    std::multimap<uint32_t, VkPhysicalDevice> available_devices;
+
+    // for each vulkan-compatible physical device
+    for (const auto& device : devices) {
+        int suitability_score = ratePhysicalDevice(device);
+        available_devices.insert({suitability_score, device});
+    }
+    
+    if (available_devices.rbegin()->first > 0) {
+        // select the highest scoring device
+        m_physical_device = available_devices.rbegin()->second;
+    // throw an error if we can't find a device
+    } else {
+        throw std::runtime_error("Failed to find a suitable GPU");
+    }
+}
+
+uint32_t TriangleRenderer::ratePhysicalDevice(VkPhysicalDevice device) {
+    // basic device properties (e.g. name, supported Vulkan versions, type etc.)
+    VkPhysicalDeviceProperties device_properties;
+    vkGetPhysicalDeviceProperties(device, &device_properties);
+    // optional device features
+    VkPhysicalDeviceFeatures device_features;
+    vkGetPhysicalDeviceFeatures(device, &device_features);
+
+    std::cout << "Device: " << std::string(device_properties.deviceName) << std::endl;
+    uint32_t device_score = 0;
+    device_score = device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 1000 : 0;
+    device_score += device_properties.limits.maxImageDimension2D;
+
+    // demand a geometry shader
+    if (!device_features.geometryShader) {
+        device_score = 0;
+    }
+    // get the queue family indices
+    QueueFamilyIndices queue_families = findQueueFamilies(device);
+    // demand that we have a complete set of queue families
+    if (!queue_families.isComplete()) {
+        device_score = 0;
+    }
+    std::cout <<"\tscore: " << device_score << std::endl;
+    return device_score;
+}
+
+TriangleRenderer::QueueFamilyIndices TriangleRenderer::findQueueFamilies(VkPhysicalDevice device) {
+    
+    // get the available queue families for the physical device
+    uint32_t queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
+
+    QueueFamilyIndices queue_indices;
+    uint32_t i = 0;
+    // for each queue family
+    for (const auto& queue_family : queue_families) {
+        // if it's a graphics queue family
+        if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            queue_indices.graphics_family = i;
+        }
+        // if we've got all the queues we need
+        if (queue_indices.isComplete()) {
+            break;
+        }
+        ++i;
+    }
+
+    return queue_indices;
 }
 
 bool TriangleRenderer::checkValidationLayerSupport(const std::vector<const char*>& validation_layers) {
@@ -50,11 +137,6 @@ bool TriangleRenderer::checkValidationLayerSupport(const std::vector<const char*
     }
 
     return true;
-}
-
-void TriangleRenderer::initVulkan() {
-    createInstance(); // create vulkan interface
-    setupDebugMessenger(); // setup debug layer messenger
 }
 
 void TriangleRenderer::setupDebugMessenger() {

@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <cstring>
 #include <map>
+#include <set>
 
 void TriangleRenderer::run() {
     initWindow(); // setup window
@@ -29,28 +30,43 @@ void TriangleRenderer::initWindow() {
 void TriangleRenderer::initVulkan() {
     createInstance(); // create vulkan interface
     setupDebugMessenger(); // setup debug layer messenger
+    createSurface(); // create the surface to render to (befroe pshycial device selection as it can affect which device gets selected)
     selectPhysicalDevice(); // select physical device(s)
     createLogicalDevice(); // create logical device
+}
+
+void TriangleRenderer::createSurface() {
+    // if we were unable to create a surface to render to
+    if (glfwCreateWindowSurface(m_vulkan_instance, m_window, nullptr, &m_surface) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create window surface");
+    }
 }
 
 void TriangleRenderer::createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(m_physical_device);
 
-    // configure queue creation
-    VkDeviceQueueCreateInfo queue_creation_config{};
-    queue_creation_config.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_creation_config.queueFamilyIndex = indices.graphics_family.value();
-    queue_creation_config.queueCount = 1;
+    std::vector<VkDeviceQueueCreateInfo> queue_creation_configs;
+    std::set<uint32_t> unique_queue_families = {indices.graphics_family.value(), indices.present_family.value()};
     float queue_priority = 1.0f; // influences scheduling priority, value between 0 and 1
-    queue_creation_config.pQueuePriorities = &queue_priority;
+
+    // for each unique queue type required
+    for (uint32_t queue_family : unique_queue_families) {
+        // configure the current queue
+        VkDeviceQueueCreateInfo queue_creation_config{};
+        queue_creation_config.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_creation_config.queueFamilyIndex = queue_family;
+        queue_creation_config.queueCount = 1;
+        queue_creation_config.pQueuePriorities = &queue_priority;
+        queue_creation_configs.push_back(queue_creation_config);
+    }
 
     // set physical device features to use
     VkPhysicalDeviceFeatures device_features{};
 
     VkDeviceCreateInfo logical_device_config{};
     logical_device_config.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    logical_device_config.pQueueCreateInfos = &queue_creation_config;
-    logical_device_config.queueCreateInfoCount = 1;
+    logical_device_config.queueCreateInfoCount = static_cast<uint32_t>(queue_creation_configs.size());
+    logical_device_config.pQueueCreateInfos = queue_creation_configs.data();
     logical_device_config.pEnabledFeatures = &device_features;
     logical_device_config.enabledExtensionCount = 0;
 
@@ -69,6 +85,7 @@ void TriangleRenderer::createLogicalDevice() {
 
     // get queues for device
     vkGetDeviceQueue(m_logical_device, indices.graphics_family.value(), 0, &m_graphics_queue);
+    vkGetDeviceQueue(m_logical_device, indices.present_family.value(), 0, &m_presentation_queue);
 }
 
 void TriangleRenderer::selectPhysicalDevice() {
@@ -141,6 +158,14 @@ TriangleRenderer::QueueFamilyIndices TriangleRenderer::findQueueFamilies(VkPhysi
         if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             queue_indices.graphics_family = i;
         }
+
+        // if it's a presentation queue family
+        VkBool32 presentation_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &presentation_support);
+        if (presentation_support) {
+            queue_indices.present_family = i;
+        }
+
         // if we've got all the queues we need
         if (queue_indices.isComplete()) {
             break;
@@ -221,6 +246,11 @@ void TriangleRenderer::getAvailableExtensions() {
 void TriangleRenderer::createInstance() {
     // vulkan settings are typically passed using structs
 
+    // ensure we are able to provide validation layers if they are available
+    if (m_enable_validation_layers && !checkValidationLayerSupport(m_validation_layers)) {
+        throw std::runtime_error("validation layers requested, but not available!");
+    }
+
     // create vulkan application config
     VkApplicationInfo application_config{}; // defaults other parameters such as pNext to nullptr (this can point to extension info)
     application_config.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO; // set structure type to vulkan app/instance info
@@ -244,10 +274,6 @@ void TriangleRenderer::createInstance() {
     VkDebugUtilsMessengerCreateInfoEXT debug_creation_config{};
     // check for validation layers
     if (m_enable_validation_layers) {
-
-        if (!checkValidationLayerSupport(m_validation_layers)) {
-            throw std::runtime_error("validation layers requested, but not available!");
-        }
 
         // set validation layers
         instance_config.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
@@ -294,11 +320,12 @@ void TriangleRenderer::mainLoop() {
 }
 
 void TriangleRenderer::cleanup() {
+    vkDestroyDevice(m_logical_device, nullptr);
     if (m_enable_validation_layers) {
         // destroy the debug messenger
         destroyDebugUtilsMessengerEXT(m_vulkan_instance, m_debug_messenger, nullptr);
     }
-    vkDestroyDevice(m_logical_device, nullptr);
+    vkDestroySurfaceKHR(m_vulkan_instance, m_surface, nullptr);
     vkDestroyInstance(m_vulkan_instance, nullptr); // destory vulkan instance, nullptr is for callback
     glfwDestroyWindow(m_window); // destroy the window
     glfwTerminate(); // terminate glfw

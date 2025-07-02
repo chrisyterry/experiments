@@ -64,6 +64,7 @@ private:
      */
     struct QueueFamilyIndices {
         std::optional<uint32_t> graphics_family; ///< index for graphics queues
+        std::optional<uint32_t> present_family; ///< index for presentation queues (graphics and presentation queues may not overlap)
 
         /**
          * @brief whether the available queue families are complete
@@ -71,7 +72,7 @@ private:
          * @return true if qeue families are complete
          */
         bool isComplete() {
-            return graphics_family.has_value();
+            return graphics_family.has_value() && present_family.has_value();
         }
     };
 
@@ -108,14 +109,19 @@ private:
     std::vector<const char*> getRequiredExtensions();
 
     /**
-     * @brief select physical devices to use
+     * @brief create a surface to render to
      */
-    void selectPhysicalDevice();
+    void createSurface();
 
     /**
      * @brief create a logical device to use
      */
     void createLogicalDevice();
+
+    /**
+     * @brief select physical devices to use
+     */
+    void selectPhysicalDevice();
 
     /**
      * @brief assign a score to the physical device based on its suitability for our purposes
@@ -204,10 +210,12 @@ private:
     VkDevice m_logical_device;                           ///< logical device to use
 
     // window components
-    GLFWwindow *m_window;                                ///< glfw window for rendering
+    GLFWwindow* m_window; ///< glfw window for rendering
+    VkSurfaceKHR m_surface; ///< surface to render to
 
-    // queues
+    // queues and graphics
     VkQueue m_graphics_queue; ///< queue for graphics presentation
+    VkQueue m_presentation_queue; ///< queue for presenting graphics to screen
 
     // Debugging
     #define NDEBUG

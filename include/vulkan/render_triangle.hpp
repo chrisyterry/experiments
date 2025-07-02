@@ -113,6 +113,11 @@ private:
     void selectPhysicalDevice();
 
     /**
+     * @brief create a logical device to use
+     */
+    void createLogicalDevice();
+
+    /**
      * @brief assign a score to the physical device based on its suitability for our purposes
      * 
      * @param device the physical device to check
@@ -192,17 +197,19 @@ private:
 
         return VK_FALSE;
     }
-
-    VkDebugUtilsMessengerEXT m_debug_messenger;          ///< manages debug callback, can have multiple of these
+    
+    // Vulkan components
     VkInstance m_vulkan_instance;                        ///< instance of vulkan
     VkPhysicalDevice m_physical_device = VK_NULL_HANDLE; ///< physical device to use
+    VkDevice m_logical_device;                           ///< logical device to use
+
+    // window components
     GLFWwindow *m_window;                                ///< glfw window for rendering
 
-    // This has to be global/live beyond the scope of create instance for it to work
-    const std::vector<const char*> m_validation_layers = {
-        "VK_LAYER_KHRONOS_validation" // standard validation layer
-    };
+    // queues
+    VkQueue m_graphics_queue; ///< queue for graphics presentation
 
+    // Debugging
     #define NDEBUG
 
     #ifdef NDEBUG
@@ -211,4 +218,9 @@ private:
         const bool m_enable_validation_layers = false;
     #endif
 
+    VkDebugUtilsMessengerEXT m_debug_messenger; ///< manages debug callback, can have multiple of these
+    // This has to be global/live beyond the scope of create instance for it to work
+    const std::vector<const char*> m_validation_layers = {
+        "VK_LAYER_KHRONOS_validation" // standard validation layer
+    };
 };

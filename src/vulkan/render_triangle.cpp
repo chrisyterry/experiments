@@ -30,6 +30,45 @@ void TriangleRenderer::initVulkan() {
     createInstance(); // create vulkan interface
     setupDebugMessenger(); // setup debug layer messenger
     selectPhysicalDevice(); // select physical device(s)
+    createLogicalDevice(); // create logical device
+}
+
+void TriangleRenderer::createLogicalDevice() {
+    QueueFamilyIndices indices = findQueueFamilies(m_physical_device);
+
+    // configure queue creation
+    VkDeviceQueueCreateInfo queue_creation_config{};
+    queue_creation_config.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_creation_config.queueFamilyIndex = indices.graphics_family.value();
+    queue_creation_config.queueCount = 1;
+    float queue_priority = 1.0f; // influences scheduling priority, value between 0 and 1
+    queue_creation_config.pQueuePriorities = &queue_priority;
+
+    // set physical device features to use
+    VkPhysicalDeviceFeatures device_features{};
+
+    VkDeviceCreateInfo logical_device_config{};
+    logical_device_config.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    logical_device_config.pQueueCreateInfos = &queue_creation_config;
+    logical_device_config.queueCreateInfoCount = 1;
+    logical_device_config.pEnabledFeatures = &device_features;
+    logical_device_config.enabledExtensionCount = 0;
+
+    // if validation layers are enabled
+    if (m_enable_validation_layers) {
+        logical_device_config.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
+        logical_device_config.ppEnabledLayerNames = m_validation_layers.data();
+    } else {
+        logical_device_config.enabledLayerCount = 0;
+    }
+
+    // attempt to create the logical device
+    if (vkCreateDevice(m_physical_device, &logical_device_config, nullptr, &m_logical_device) != VK_SUCCESS) {
+        throw std::runtime_error("Could not create logical device!");
+    }
+
+    // get queues for device
+    vkGetDeviceQueue(m_logical_device, indices.graphics_family.value(), 0, &m_graphics_queue);
 }
 
 void TriangleRenderer::selectPhysicalDevice() {
@@ -259,6 +298,7 @@ void TriangleRenderer::cleanup() {
         // destroy the debug messenger
         destroyDebugUtilsMessengerEXT(m_vulkan_instance, m_debug_messenger, nullptr);
     }
+    vkDestroyDevice(m_logical_device, nullptr);
     vkDestroyInstance(m_vulkan_instance, nullptr); // destory vulkan instance, nullptr is for callback
     glfwDestroyWindow(m_window); // destroy the window
     glfwTerminate(); // terminate glfw

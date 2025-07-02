@@ -35,6 +35,8 @@ echo "installing CMake"
 sudo apt install cmake # CMake
 echo "installing Eigen"
 sudo apt install libeigen3-dev # Eigen
+echo "installing clang"
+sudo sudo apt install clang # clang
 
 # source library-specific installers; these will be prefixed with install_
 for script in "$SCRIPT_DIR"/install_*.sh; do

@@ -36,6 +36,38 @@ void TriangleRenderer::initVulkan() {
     selectPhysicalDevice(); // select physical device(s)
     createLogicalDevice(); // create logical device
     createSwapChain(); // create swapchain
+    createImageViews(); // create image views
+}
+
+void TriangleRenderer::createImageViews() {
+    m_swapchain_image_views.resize(m_swapchain_images.size());
+
+    // for each swapchain image view
+    for (size_t i = 0; i < m_swapchain_images.size(); ++i) {
+        VkImageViewCreateInfo image_view_config{};
+        image_view_config.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        image_view_config.image = m_swapchain_images[i];
+        image_view_config.viewType = VK_IMAGE_VIEW_TYPE_2D; // lets you choose how to interpret the image (1D, 2D, 3D or cubemap)
+        image_view_config.format = m_swapchain_format;
+
+        // color swizzling (swizzling is basically swapping color channels; below keeps it as it is)
+        image_view_config.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        image_view_config.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        image_view_config.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        image_view_config.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        // sub resources (what is the purpose of the image and which part to access)
+        image_view_config.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        image_view_config.subresourceRange.baseMipLevel = 0;
+        image_view_config.subresourceRange.levelCount = 1;
+        image_view_config.subresourceRange.baseArrayLayer = 0;
+        image_view_config.subresourceRange.layerCount = 1; // may have more layers in 3D applications; e.g. a view for the left and right eye
+
+        // create the image view
+        if (vkCreateImageView(m_logical_device, &image_view_config, nullptr, &m_swapchain_image_views[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create image views!");
+        }
+    }
 }
 
 void TriangleRenderer::createSwapChain() {
@@ -89,7 +121,7 @@ void TriangleRenderer::createSwapChain() {
     // get the swapchain image handles (number of images may have changed)
     vkGetSwapchainImagesKHR(m_logical_device, m_swapchain, &image_count, nullptr);
     m_swapchain_images.resize(image_count);
-    vkGetSwapchainImagesKHR(m_logical_device, m_swapchain, &image_count, nullptr);
+    vkGetSwapchainImagesKHR(m_logical_device, m_swapchain, &image_count, m_swapchain_images.data());
 
     // store the swapchain format and extent
     m_swapchain_format = surface_format.format;
@@ -493,6 +525,10 @@ void TriangleRenderer::mainLoop() {
 }
 
 void TriangleRenderer::cleanup() {
+    // destroy image views
+    for (auto view : m_swapchain_image_views) {
+        vkDestroyImageView(m_logical_device, view, nullptr);
+    }
     vkDestroySwapchainKHR(m_logical_device, m_swapchain, nullptr);
     vkDestroyDevice(m_logical_device, nullptr);
     if (m_enable_validation_layers) {

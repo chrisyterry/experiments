@@ -193,6 +193,11 @@ private:
     void createSwapChain();
 
     /**
+     * @brief create swapchain image views
+     */
+    void createImageViews();
+
+    /**
      * @brief find available queue families for the specified physical device
      * 
      * @param device the physical device to analyse
@@ -276,6 +281,7 @@ private:
     // swapchain
     VkSwapchainKHR m_swapchain; ///< swap chain for images to render to the screen
     std::vector<VkImage> m_swapchain_images; ///< images in the swapchain
+    std::vector<VkImageView> m_swapchain_image_views; ///< image views for swapchain images
     VkFormat m_swapchain_format; ///< swapchain image format
     VkExtent2D m_swapchain_extent; ///< swapchain image extent (Add setting of these)
 

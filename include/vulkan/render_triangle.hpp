@@ -77,6 +77,24 @@ private:
     };
 
     /**
+     * @brief structure to hold swap properties
+     */
+    struct SwapChainSupport {
+        VkSurfaceCapabilitiesKHR capabilites; // Swap chain capabilities
+        std::vector<VkSurfaceFormatKHR> formats; // supported surface formats
+        std::vector<VkPresentModeKHR> modes; // supported presentation modes
+
+        /**
+         * @brief whether the swap chain support is adequate
+         * 
+         * @return true if the swap chain is adequate (has a compatible presentation mode and format)
+         */
+        bool isAdequate() {
+            return !formats.empty() && !modes.empty();
+        }
+    };
+
+    /**
      * @brief Initialize a gflw window for vulkan to use
      */
     void initWindow();
@@ -131,6 +149,48 @@ private:
      * @return integer suitability score for the device
      */
     uint32_t ratePhysicalDevice(VkPhysicalDevice device);
+
+    /**
+     * @brief check if the speicifed physical device supports the required extensions
+     * @param device the physical device to check
+     * 
+     * @return true if the physical device supports all the required extensions
+     */
+    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+
+    /**
+     * @brief determine the capabilities of swap chains for the specified physical device
+     */
+    SwapChainSupport getSwapChainSupport(VkPhysicalDevice device);
+
+    /**
+     * @brief select a swapchain surface format from the available options
+     * @note currently just selects VK_FORMAT_B8G8R8A8_SRGB if it's available
+     * 
+     * @return the selected swap chain format
+     */
+    VkSurfaceFormatKHR selectSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available_formats);
+
+    /**
+     * @brief select the presentation mode for the swapchain from the available options
+     * @note currently selects VK_PRESENT_MODE_MAILBOX_KHR if it's available
+     * 
+     * @return the selected swap chain presentation mode
+     */
+    VkPresentModeKHR selectSwapPresentationMode(const std::vector<VkPresentModeKHR>& available_modes);
+
+    /**
+     * @brief select a swap chain surface exten based on the swap chain capabilities
+     * @param capabilities the swapchain capabilities
+     * 
+     * @return the selected Surface extent
+     */
+    VkExtent2D selectSwapExtent(const VkSurfaceCapabilitiesKHR& capabilties);
+
+    /**
+     * @brief create a swapchain with the logical device
+     */
+    void createSwapChain();
 
     /**
      * @brief find available queue families for the specified physical device
@@ -213,6 +273,12 @@ private:
     GLFWwindow* m_window; ///< glfw window for rendering
     VkSurfaceKHR m_surface; ///< surface to render to
 
+    // swapchain
+    VkSwapchainKHR m_swapchain; ///< swap chain for images to render to the screen
+    std::vector<VkImage> m_swapchain_images; ///< images in the swapchain
+    VkFormat m_swapchain_format; ///< swapchain image format
+    VkExtent2D m_swapchain_extent; ///< swapchain image extent (Add setting of these)
+
     // queues and graphics
     VkQueue m_graphics_queue; ///< queue for graphics presentation
     VkQueue m_presentation_queue; ///< queue for presenting graphics to screen
@@ -227,8 +293,11 @@ private:
     #endif
 
     VkDebugUtilsMessengerEXT m_debug_messenger; ///< manages debug callback, can have multiple of these
-    // This has to be global/live beyond the scope of create instance for it to work
+    // These have to be global/live beyond the scope of create instance for it to work
     const std::vector<const char*> m_validation_layers = {
         "VK_LAYER_KHRONOS_validation" // standard validation layer
+    };
+    const std::vector<const char*> m_device_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME // swap chains
     };
 };

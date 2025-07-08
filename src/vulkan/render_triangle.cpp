@@ -8,6 +8,8 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <algorithm>
+#include <limits>
 
 void TriangleRenderer::run() {
     initWindow(); // setup window
@@ -33,6 +35,65 @@ void TriangleRenderer::initVulkan() {
     createSurface(); // create the surface to render to (befroe pshycial device selection as it can affect which device gets selected)
     selectPhysicalDevice(); // select physical device(s)
     createLogicalDevice(); // create logical device
+    createSwapChain(); // create swapchain
+}
+
+void TriangleRenderer::createSwapChain() {
+    SwapChainSupport swapchain_support = getSwapChainSupport(m_physical_device);
+
+    VkSurfaceFormatKHR surface_format = selectSwapSurfaceFormat(swapchain_support.formats);
+    VkPresentModeKHR present_mode = selectSwapPresentationMode(swapchain_support.modes);
+    VkExtent2D extent = selectSwapExtent(swapchain_support.capabilites);
+
+    // number of images in the swapchain (want at least 1 more than min so we don't have to wait to render next image)
+    uint32_t image_count = swapchain_support.capabilites.minImageCount + 1;
+    // if unlimited image count (maxImageCount = 0) has not been specified
+    if (swapchain_support.capabilites.maxImageCount > 0) {
+        image_count = std::max(image_count, swapchain_support.capabilites.maxImageCount);
+    }
+
+    VkSwapchainCreateInfoKHR swapchain_config{};
+    swapchain_config.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_config.surface = m_surface;
+    swapchain_config.minImageCount = image_count;
+    swapchain_config.imageFormat = surface_format.format;
+    swapchain_config.imageColorSpace = surface_format.colorSpace;
+    swapchain_config.imageExtent = extent;
+    swapchain_config.imageArrayLayers = 1; // want 1 layer if we're not rendering in 3D
+    swapchain_config.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // rendering directly to images in swapchain, if want to do something with them before display (e.g. postprocessing) use VK_IMAGE_USAGE_TRANSFER_DST_BIT
+
+    // determine if the graphics and presentation queues are the same and adjust settings accordingly
+    QueueFamilyIndices inidices = findQueueFamilies(m_physical_device);
+    uint32_t queueFamilyIndices[] = {inidices.graphics_family.value(), inidices.present_family.value()};
+    // if graphics and presentation queues are distinct
+    if (inidices.graphics_family.value() != inidices.present_family.value()) {
+        swapchain_config.imageSharingMode = VK_SHARING_MODE_CONCURRENT; // image used by multiple queues without explicit transfer
+        swapchain_config.queueFamilyIndexCount = 2;
+        swapchain_config.pQueueFamilyIndices = queueFamilyIndices;
+    } else {
+        swapchain_config.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // image owned by one queue at a time, ownership transfer to new queue family is explicit (fastest)
+        swapchain_config.queueFamilyIndexCount = 0; // optional
+        swapchain_config.pQueueFamilyIndices = nullptr; // optional
+    }
+    swapchain_config.preTransform = swapchain_support.capabilites.currentTransform; // can flip image 90 degrees or mirror if it's in capabilities.supportedTransform
+    swapchain_config.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // whether to use alpha channel for blending windows (generally want opaque)
+    swapchain_config.presentMode = present_mode;
+    swapchain_config.clipped = VK_TRUE; // we don't care about color of pixels in the window occluded by other pixels (faster)
+    swapchain_config.oldSwapchain = VK_NULL_HANDLE; // if we have to make a new swap chain (e.g. window size changes), pass pointer to the old one
+
+    // attempt to cerate the swapchain
+    if (vkCreateSwapchainKHR(m_logical_device, &swapchain_config, nullptr, &m_swapchain) != VK_SUCCESS) {
+        throw std::runtime_error("could not create swapchain!");
+    }
+
+    // get the swapchain image handles (number of images may have changed)
+    vkGetSwapchainImagesKHR(m_logical_device, m_swapchain, &image_count, nullptr);
+    m_swapchain_images.resize(image_count);
+    vkGetSwapchainImagesKHR(m_logical_device, m_swapchain, &image_count, nullptr);
+
+    // store the swapchain format and extent
+    m_swapchain_format = surface_format.format;
+    m_swapchain_extent = extent;
 }
 
 void TriangleRenderer::createSurface() {
@@ -68,7 +129,8 @@ void TriangleRenderer::createLogicalDevice() {
     logical_device_config.queueCreateInfoCount = static_cast<uint32_t>(queue_creation_configs.size());
     logical_device_config.pQueueCreateInfos = queue_creation_configs.data();
     logical_device_config.pEnabledFeatures = &device_features;
-    logical_device_config.enabledExtensionCount = 0;
+    logical_device_config.enabledExtensionCount = static_cast<uint32_t>(m_device_extensions.size());
+    logical_device_config.ppEnabledExtensionNames = m_device_extensions.data();
 
     // if validation layers are enabled
     if (m_enable_validation_layers) {
@@ -134,12 +196,123 @@ uint32_t TriangleRenderer::ratePhysicalDevice(VkPhysicalDevice device) {
     }
     // get the queue family indices
     QueueFamilyIndices queue_families = findQueueFamilies(device);
+
+    bool extensions_supported = checkDeviceExtensionSupport(device);
+    bool swapchain_adequate = false;
+    if (extensions_supported) {
+        SwapChainSupport swapchain_support = getSwapChainSupport(device);
+        swapchain_adequate = swapchain_support.isAdequate();
+    }
+
     // demand that we have a complete set of queue families
-    if (!queue_families.isComplete()) {
+    if (!queue_families.isComplete() || !extensions_supported || !swapchain_adequate) {
         device_score = 0;
     }
     std::cout <<"\tscore: " << device_score << std::endl;
     return device_score;
+}
+
+bool TriangleRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    // get the available extensions for the logical device
+    uint32_t extension_count;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+    std::vector<VkExtensionProperties> available_extensions(extension_count);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
+
+    // identify which extensions are available
+    std::set<std::string> required_extensions(m_device_extensions.begin(), m_device_extensions.end());
+    for (const auto& extension : available_extensions) {
+        // remove the extension form the list of extensions left to find
+        required_extensions.erase(extension.extensionName);
+        if (required_extensions.empty()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+TriangleRenderer::SwapChainSupport TriangleRenderer::getSwapChainSupport(VkPhysicalDevice device) {
+    SwapChainSupport support_details;
+
+    // get the swap chain capabilities for our target surface
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface, &support_details.capabilites);
+
+    // get the supported formats
+    uint32_t format_count;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, nullptr);
+    if (format_count > 0) {
+        support_details.formats.resize(format_count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, support_details.formats.data());
+    }
+
+    // get the supported presentation modes
+    uint32_t presentation_count;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentation_count, nullptr);
+    if (presentation_count > 0) {
+        support_details.modes.resize(presentation_count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentation_count, support_details.modes.data());
+    }
+
+    return support_details;
+}
+
+VkSurfaceFormatKHR TriangleRenderer::selectSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available_formats) {
+    // VkSurfaceFormatKHR contains a format and colorSpace
+    // format specifies color channels and types e.g. VK_FORMAT_B8G8R8A8_SRGB = 8 bits RGB + Alpha
+    // colorSpace specifies if SRGB (standard RGB) is supported using VK_COLOR_SPACE_SRGB_NONLINEAR_KHR bit; standard image colorspace
+
+    // for each supported surface format
+    for (const auto& format : available_formats) {
+        // for now, just choors 8 bit SRGB
+        if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return format;
+        }
+    }
+
+    // if we don't have our preference, take what we can get
+    return available_formats[0];
+}
+
+VkPresentModeKHR TriangleRenderer::selectSwapPresentationMode(const std::vector<VkPresentModeKHR>& available_modes) {
+    // VkPresentModeKHR has four options which affect how the displayed image is updated:
+    //      1) VK_PRESENT_MODE_IMMEDIATE_KHR - submitted images immediatley displayed, can cause tearing
+    //      2) VK_PRESENT_MODE_FIFO_KHR - image taken from front of queue when display refreshes, app has to wait if full (akin to VSync)
+    //      3) VK_PRESENT_MODE_FIFO_RELAXED_KHR - same as 2 but if queue is empty image shown immediatley, can cause tearing
+    //      4) VK_PRESENT_MODE_MAILBOX_KHR - same as 2 but if queue is full images in queue replaced by new ones, referred to as triple buffering
+    //
+
+    // for each available mode
+    for (const auto& mode : available_modes) {
+        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return mode;
+        }
+    }
+
+    // if we don't have our preference, select the most widely supported
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D TriangleRenderer::selectSwapExtent(const VkSurfaceCapabilitiesKHR& capabilties) {
+    // default is to match resolution of window by setting width and height in currentExtent to match window
+    // some window managers lets us set max::uint32_t to match best within minImageExtent and maxImageExtent
+    // GLFW uses pixels and screen coordinates (https://www.glfw.org/docs/latest/intro_guide.html#coordinate_systems)
+    // Vulkan works in pixels, for high DPI screens, screen coordiantes and pixels aren't 1:1
+
+    // if we can just use the maximum extent (full screen?)
+    if (capabilties.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilties.currentExtent;
+    // if we need to select a resolution within the limits (windowed?)
+    } else {
+        int width, height;
+        glfwGetFramebufferSize(m_window, &width, &height);
+        VkExtent2D window_extent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+        // restrict the window surface to the limits of the swap chain
+        window_extent.width = std::clamp(window_extent.width, capabilties.minImageExtent.width, capabilties.maxImageExtent.width);
+        window_extent.height = std::clamp(window_extent.height, capabilties.minImageExtent.height, capabilties.maxImageExtent.height);
+
+        return window_extent;
+    }
 }
 
 TriangleRenderer::QueueFamilyIndices TriangleRenderer::findQueueFamilies(VkPhysicalDevice device) {
@@ -320,6 +493,7 @@ void TriangleRenderer::mainLoop() {
 }
 
 void TriangleRenderer::cleanup() {
+    vkDestroySwapchainKHR(m_logical_device, m_swapchain, nullptr);
     vkDestroyDevice(m_logical_device, nullptr);
     if (m_enable_validation_layers) {
         // destroy the debug messenger

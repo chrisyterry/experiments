@@ -37,6 +37,54 @@ void TriangleRenderer::initVulkan() {
     createLogicalDevice(); // create logical device
     createSwapChain(); // create swapchain
     createImageViews(); // create image views
+    createGraphicsPipeline(); // create graphics pipeline
+}
+
+void TriangleRenderer::createGraphicsPipeline() {
+    // load shaders
+    ///\todo figure out a better way of doing the paths
+    std::vector<char> vertex_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_vertex_shader.spv");
+    std::vector<char> fragment_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_vertex_shader.spv");
+
+    VkShaderModule vertex_shader = createShaderModule(vertex_shader_code);
+    VkShaderModule fragment_shader = createShaderModule(fragment_shader_code);
+
+    // setup the vertex shader stage config
+    VkPipelineShaderStageCreateInfo vertex_stage_config{};
+    vertex_stage_config.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertex_stage_config.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertex_stage_config.module = vertex_shader; // set shader module
+    vertex_stage_config.pName = "main"; // entry function in shader
+    vertex_stage_config.pSpecializationInfo = nullptr; // specify values for shader constants
+
+    // setup the fragment stage config
+    VkPipelineShaderStageCreateInfo fragment_stage_config{};
+    fragment_stage_config.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragment_stage_config.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragment_stage_config.module = fragment_shader;
+    fragment_stage_config.pName = "main"; 
+    fragment_stage_config.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo shader_stages[] = {vertex_stage_config, fragment_stage_config};
+
+    // destroy shaders
+    vkDestroyShaderModule(m_logical_device, vertex_shader, nullptr);
+    vkDestroyShaderModule(m_logical_device, fragment_shader, nullptr);
+}
+
+VkShaderModule TriangleRenderer::createShaderModule(const std::vector<char>& shader_code) {
+    VkShaderModuleCreateInfo shader_config{};
+    shader_config.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shader_config.codeSize = shader_code.size();
+    shader_config.pCode = reinterpret_cast<const uint32_t*>(shader_code.data());
+
+    // create the shader
+    VkShaderModule shader;
+    if (vkCreateShaderModule(m_logical_device, &shader_config, nullptr, &shader)) {
+        throw std::runtime_error("Could not create shader module!");
+    }
+
+    return shader;
 }
 
 void TriangleRenderer::createImageViews() {

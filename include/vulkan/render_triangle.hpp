@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <optional>
+#include <fstream>
 
 /**
  * @brief helper function to look up vkCreateDebugUtilsMessenger function to create a debug messenger
@@ -47,6 +48,27 @@ void destroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     if (destroy_debug_function != nullptr) {
         destroy_debug_function(instance, debug_messenger, allocator);
     }
+}
+
+static std::vector<char> readBinaryFile(const std::string& file_path) {
+    // create a binary file stream, starting at the end of the file
+    std::ifstream file(file_path, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error(("Could not open " + file_path + "!"));
+    }
+
+    // get the file size using the fact we are at the end of the file
+    size_t file_size = (size_t) file.tellg();
+    std::vector<char> byte_buffer(file_size);
+
+    // read file from start
+    file.seekg(0);
+    file.read(byte_buffer.data(), file_size);
+    
+    // return the file
+    file.close();
+    return byte_buffer;
 }
 
 class TriangleRenderer
@@ -196,6 +218,20 @@ private:
      * @brief create swapchain image views
      */
     void createImageViews();
+
+    /**
+     * @brief create graphics pipeline for rendering
+     */
+    void createGraphicsPipeline();
+
+    /**
+     * @brief create a VK shader module from parsed SPV binary
+     * 
+     * @param shader_code byte code for shader
+     * 
+     * @return VK shader module for the shader
+     */
+    VkShaderModule createShaderModule(const std::vector<char>& shader_code);
 
     /**
      * @brief find available queue families for the specified physical device

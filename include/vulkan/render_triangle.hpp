@@ -322,8 +322,9 @@ private:
     VkExtent2D m_swapchain_extent; ///< swapchain image extent (Add setting of these)
 
     // queues and graphics
-    VkQueue m_graphics_queue; ///< queue for graphics presentation
-    VkQueue m_presentation_queue; ///< queue for presenting graphics to screen
+    VkQueue m_graphics_queue;           ///< queue for graphics presentation
+    VkQueue m_presentation_queue;       ///< queue for presenting graphics to screen
+    VkPipelineLayout m_pipeline_layout; ///< graphics pipeline layout
 
     // Debugging
     #define NDEBUG

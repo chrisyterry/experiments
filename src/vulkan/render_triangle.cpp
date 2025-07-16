@@ -37,7 +37,61 @@ void TriangleRenderer::initVulkan() {
     createLogicalDevice(); // create logical device
     createSwapChain(); // create swapchain
     createImageViews(); // create image views
+    createRenderPass(); // create frame buffer attachments and associated data
     createGraphicsPipeline(); // create graphics pipeline
+}
+
+void TriangleRenderer::createRenderPass() {
+    // for now we have a single color buffer attachment for one of the images in the swapchain
+    VkAttachmentDescription color_attachment{};
+    color_attachment.format  = m_swapchain_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    // loadOp specifies what to do with attachment data before rendering
+    // applies to color and depth data
+    // - VK_ATTACHMENT_LOAD_OP_LOAD - preserve existing attachment contents
+    // - VK_ATTACHMENT_LOAD_OP_CLEAR - clear values to constant at start
+    // - VK_ATTACHMENT_LOAD_OP_DONT_CARE - existing contents undefined
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // sets everything black
+    // storeOp specifies what to do with attachment data fater rendering
+    // applies to color and depth data
+    // - VK_ATTACHMENT_STORE_OP_STORE - rendered contents stored in memory, can be read later
+    // - VK_ATTACHMENT_STORE_OP_DONT_CARE - contents undefined after operation
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // so we can see the triangle
+    // apply stencilOps apply to stencils
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    // images need to be in correct layout for the operation to be performed, have a few options (these aren't all of them):
+    // - VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL - images used as color attachment
+    // - VK_IMAGE_LAYOUT_PRESENT_SRC_KHR - images to be presented to swap chain
+    // - VK_IMAGE_LAYOUT_TRANSFER_DST - images to be used as destination for a mem copy
+    // - VK_IMAGE_LAYOUT_UNDEFINED - don't care what format it's in
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // expected layout before render pass
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // expected layout after render pass
+
+    // each sub pass references 1 or more attachments
+    VkAttachmentReference color_attachment_ref{};
+    color_attachment_ref.attachment = 0; // attachment index - this corresponds to the layout(location = 0) out vec4 outColor from the shader!
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // layout to be attached
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // may allow compute subpasses in future
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+    subpass.pInputAttachments = nullptr;       // attachments read from a shader
+    subpass.pResolveAttachments = nullptr;     // attachments for multisampling color attachments
+    subpass.pDepthStencilAttachment = nullptr; // attachment for depth and stencil data
+    subpass.pPreserveAttachments = nullptr;    // attachmenbts for data that is unused but needs to be preserved
+
+    VkRenderPassCreateInfo render_pass_config{};
+    render_pass_config.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_config.attachmentCount = 1;
+    render_pass_config.pAttachments = &color_attachment;
+    render_pass_config.subpassCount = 1;
+    render_pass_config.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(m_logical_device, &render_pass_config, nullptr, &m_render_pass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render pass!");
+    }
 }
 
 void TriangleRenderer::createGraphicsPipeline() {
@@ -714,6 +768,7 @@ void TriangleRenderer::mainLoop() {
 void TriangleRenderer::cleanup() {
     // destory pipeline layout
     vkDestroyPipelineLayout(m_logical_device, m_pipeline_layout, nullptr);
+    vkDestroyRenderPass(m_logical_device, m_render_pass, nullptr);
 
     // destroy image views
     for (auto view : m_swapchain_image_views) {

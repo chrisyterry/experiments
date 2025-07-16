@@ -225,6 +225,11 @@ private:
     void createGraphicsPipeline();
 
     /**
+     * @brief create render pass object
+     */
+    void createRenderPass();
+
+    /**
      * @brief create a VK shader module from parsed SPV binary
      * 
      * @param shader_code byte code for shader
@@ -325,6 +330,7 @@ private:
     VkQueue m_graphics_queue;           ///< queue for graphics presentation
     VkQueue m_presentation_queue;       ///< queue for presenting graphics to screen
     VkPipelineLayout m_pipeline_layout; ///< graphics pipeline layout
+    VkRenderPass m_render_pass;         ///< render pass
 
     // Debugging
     #define NDEBUG

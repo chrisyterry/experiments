@@ -98,7 +98,7 @@ void TriangleRenderer::createGraphicsPipeline() {
     // load shaders
     ///\todo figure out a better way of doing the paths
     std::vector<char> vertex_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_vertex_shader.spv");
-    std::vector<char> fragment_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_vertex_shader.spv");
+    std::vector<char> fragment_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_fragment_shader.spv");
 
     VkShaderModule vertex_shader = createShaderModule(vertex_shader_code);
     VkShaderModule fragment_shader = createShaderModule(fragment_shader_code);
@@ -144,35 +144,30 @@ void TriangleRenderer::createGraphicsPipeline() {
     input_assembly_config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     input_assembly_config.primitiveRestartEnable = VK_FALSE; // VK_TRUE lets you break up lines and triangles in the _STRIP topology modes using index of 0xFFFF or 0xFFFFFFFF
 
-    // some pipeline states can be dynamic, most are fixed
-    std::vector<VkDynamicState> dynamic_states = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-    };
-    VkPipelineDynamicStateCreateInfo dynamic_state = {};
-    dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
-    dynamic_state.pDynamicStates = dynamic_states.data();
-
+    /*
+    // these two are dynamic in this implementation
     // view port
-    VkViewport viewport_config{};
-    viewport_config.x = 0.0f;
-    viewport_config.y = 0.0f;
-    viewport_config.width = (float) m_swapchain_extent.width; // match to swapchain size
-    viewport_config.height = (float) m_swapchain_extent.height;
-    viewport_config.minDepth = 0.0f; // near clipping plane
-    viewport_config.maxDepth = 1.0f; // far clipping plane
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float) m_swapchain_extent.width; // match to swapchain size
+    viewport.height = (float) m_swapchain_extent.height;
+    viewport.minDepth = 0.0f; // near clipping plane
+    viewport.maxDepth = 1.0f; // far clipping plane
 
     // scissor rectangle (full extend of image/same size as framebuffer)
     VkRect2D scissor_rectangle{};
     scissor_rectangle.offset = {0, 0};
     scissor_rectangle.extent = m_swapchain_extent;
+    */
 
     // view port state (dynamic)
     VkPipelineViewportStateCreateInfo viewport_state_config;
-    viewport_state_config.sType - VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state_config.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewport_state_config.viewportCount = 1; // some hardware supports multiple viewports and scissors
+    //viewport_state_config.pViewports = &viewport;
     viewport_state_config.scissorCount = 1;
+    //viewport_state_config.pScissors = &scissor_rectangle;
 
     // rasterizer
     VkPipelineRasterizationStateCreateInfo rasterizer_config {};
@@ -247,7 +242,16 @@ void TriangleRenderer::createGraphicsPipeline() {
     color_blending_config.blendConstants[2] = 0.0f; // optional
     color_blending_config.blendConstants[3] = 0.0f; // optional
 
-    VkPipelineLayout pipeline_layout;
+    // some pipeline states can be dynamic, most are fixed
+    std::vector<VkDynamicState> dynamic_states = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamic_state = {};
+    dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
+    dynamic_state.pDynamicStates = dynamic_states.data();
+
     VkPipelineLayoutCreateInfo pipeline_layout_config{};
     pipeline_layout_config.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_config.setLayoutCount = 0; // lets you pass values to uniforms in shader (optional)
@@ -258,6 +262,37 @@ void TriangleRenderer::createGraphicsPipeline() {
     // create the pipeline layout
     if (vkCreatePipelineLayout(m_logical_device, &pipeline_layout_config, nullptr, &m_pipeline_layout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout");
+    }
+
+    // graphics pipeline
+    VkGraphicsPipelineCreateInfo pipeline_config{};
+    pipeline_config.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    // programmable shader stages
+    pipeline_config.stageCount = 2;
+    pipeline_config.pStages = shader_stages;
+    // fixed function stages
+    pipeline_config.pVertexInputState = &vertex_input_config;
+    pipeline_config.pInputAssemblyState = &input_assembly_config;
+    pipeline_config.pViewportState = &viewport_state_config;
+    pipeline_config.pRasterizationState = &rasterizer_config;
+    pipeline_config.pMultisampleState = &multisampling_config;
+    pipeline_config.pDepthStencilState = nullptr; //optional
+    pipeline_config.pColorBlendState = &color_blending_config;
+    pipeline_config.pDynamicState = &dynamic_state;
+    // pipeline layout
+    pipeline_config.layout = m_pipeline_layout;
+    // render pass
+    pipeline_config.renderPass = m_render_pass;// can use other render passes if they're compatible (https://docs.vulkan.org/spec/latest/chapters/renderpass.html#renderpass-compatibility)
+    pipeline_config.subpass = 0;
+    // base pipeline (from deriving from an existing piepline)
+    // only used if K_PIPELINE_CREATE_DERIVATIVE_BIT is specified in VkGraphicsPipelineCreateInfo
+    pipeline_config.basePipelineHandle = VK_NULL_HANDLE; // handle to existing piepline to use as base (optional)
+    pipeline_config.basePipelineIndex = -1; // index of pipeline that is about to be created to use as base (optional)
+
+    // cerate the pipeline, can create multiple pipelines with one call
+    // second param is a pipeline cache which can be used to make pipeline setup faster
+    if (vkCreateGraphicsPipelines(m_logical_device, VK_NULL_HANDLE, 1 , &pipeline_config, nullptr, &m_graphics_pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create graphics pipeline!");
     }
 
     // destroy shaders
@@ -767,6 +802,7 @@ void TriangleRenderer::mainLoop() {
 
 void TriangleRenderer::cleanup() {
     // destory pipeline layout
+    vkDestroyPipeline(m_logical_device, m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_logical_device, m_pipeline_layout, nullptr);
     vkDestroyRenderPass(m_logical_device, m_render_pass, nullptr);
 

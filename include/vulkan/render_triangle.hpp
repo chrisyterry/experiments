@@ -331,6 +331,7 @@ private:
     VkQueue m_presentation_queue;       ///< queue for presenting graphics to screen
     VkPipelineLayout m_pipeline_layout; ///< graphics pipeline layout
     VkRenderPass m_render_pass;         ///< render pass
+    VkPipeline m_graphics_pipeline;     ///< graphics pipeline
 
     // Debugging
     #define NDEBUG

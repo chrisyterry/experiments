@@ -230,6 +230,11 @@ private:
     void createRenderPass();
 
     /**
+     * @brief create frame buffers
+     */
+    void createFrameBuffers();
+
+    /**
      * @brief create a VK shader module from parsed SPV binary
      * 
      * @param shader_code byte code for shader
@@ -320,6 +325,7 @@ private:
     VkSurfaceKHR m_surface; ///< surface to render to
 
     // swapchain
+    std::vector<VkFramebuffer> m_swapchain_framebuffer; ///< frame buffer for the swapchain
     VkSwapchainKHR m_swapchain; ///< swap chain for images to render to the screen
     std::vector<VkImage> m_swapchain_images; ///< images in the swapchain
     std::vector<VkImageView> m_swapchain_image_views; ///< image views for swapchain images

@@ -39,6 +39,32 @@ void TriangleRenderer::initVulkan() {
     createImageViews(); // create image views
     createRenderPass(); // create frame buffer attachments and associated data
     createGraphicsPipeline(); // create graphics pipeline
+    createFrameBuffers(); // create framebuffers
+}
+
+void TriangleRenderer::createFrameBuffers() {
+    // resize so we have a frame buffer entry for each swapchain image
+    m_swapchain_framebuffer.resize(m_swapchain_image_views.size() - 1);
+
+    // for each swapchain image
+    for (size_t i = 0; i < m_swapchain_image_views.size(); ++i) {
+        VkImageView attachments[] = {
+            m_swapchain_image_views[i]
+        };
+
+        VkFramebufferCreateInfo framebuffer_config{};
+        framebuffer_config.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_config.renderPass = m_render_pass; // frame buffers are only compatible with certain render passes
+        framebuffer_config.attachmentCount = 1;
+        framebuffer_config.pAttachments = attachments;
+        framebuffer_config.width = m_swapchain_extent.width;
+        framebuffer_config.height = m_swapchain_extent.height;
+        framebuffer_config.layers = 1; // > 1 if 3D
+
+        if (vkCreateFramebuffer(m_logical_device, &framebuffer_config, nullptr, &m_swapchain_framebuffer[i]) != VK_SUCCESS) {
+            std::runtime_error("Failed to create framebuffer!");
+        }
+    }
 }
 
 void TriangleRenderer::createRenderPass() {
@@ -801,6 +827,11 @@ void TriangleRenderer::mainLoop() {
 }
 
 void TriangleRenderer::cleanup() {
+    // destroy framebuffers
+    for (auto framebuffer : m_swapchain_framebuffer) {
+        vkDestroyFramebuffer(m_logical_device, framebuffer, nullptr);
+    }
+
     // destory pipeline layout
     vkDestroyPipeline(m_logical_device, m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_logical_device, m_pipeline_layout, nullptr);

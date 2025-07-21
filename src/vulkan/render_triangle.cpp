@@ -40,6 +40,110 @@ void TriangleRenderer::initVulkan() {
     createRenderPass(); // create frame buffer attachments and associated data
     createGraphicsPipeline(); // create graphics pipeline
     createFrameBuffers(); // create framebuffers
+    createCommandPool(); // create command pool
+    createCommandBuffer(); // create command buffer
+}
+
+void TriangleRenderer::createCommandBuffer() {
+
+    VkCommandBufferAllocateInfo allocation_config{};
+    allocation_config.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocation_config.commandPool = m_command_pool;
+    // two levels available:
+    // - VK_COMMAND_BUFFER_LEVEL_PRIMARY - can be submitted to queue for execution but can't be called from other buffers
+    // - VK_COMMAND_BUFFER_LEVEL_SECONDARY - can't submit directly, but can be called from primary buffers
+    allocation_config.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocation_config.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(m_logical_device, &allocation_config, &m_command_buffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers");
+    }
+}
+
+void TriangleRenderer::createCommandPool() {
+    QueueFamilyIndices queue_family_indices = findQueueFamilies(m_physical_device);
+
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    // two flag options:
+    // - VK_COMMAND_POOL_CREATE_TRANSIENT_BIT - command buffers frequently rerecorded with new commands (changes memory allocation)
+    // - VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT - command buffers can be rerecorded individually, don't have to be reset together
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+
+    // execute command buffers by submitting them on device queues
+    // command pool can only allocate buffers submitted to a single type of queue
+
+    if (vkCreateCommandPool(m_logical_device, &pool_info, nullptr, &m_command_pool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to cerate graphics command pool!");
+    }
+}
+
+void TriangleRenderer::recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index) {
+    // begin recording a command buffer with a config
+    VkCommandBufferBeginInfo buffer_config{};
+    buffer_config.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    // flags specifies how to use command buffer:
+    // - VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT -  buffer will be rerecorded after executing once
+    // - VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT - secondary command buffer entirely within one render pass
+    // - VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT - command buffer can be resubmitted while pending execution
+    buffer_config.flags = 0; // (optional)
+    buffer_config.pInheritanceInfo = nullptr; // which state to inherit from primary command buffers (optional)
+
+    if (vkBeginCommandBuffer(command_buffer, &buffer_config) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording command buffer!");
+    }
+
+    VkRenderPassBeginInfo render_pass_config{};
+    render_pass_config.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_config.renderPass = m_render_pass;
+    render_pass_config.framebuffer = m_swapchain_framebuffer[image_index];
+    // render area where shader loads and stores take place
+    render_pass_config.renderArea.offset = {0, 0};
+    render_pass_config.renderArea.extent = m_swapchain_extent; // should match attachments size for best performance
+    // values to set screen for VK_ATTACHMENT_LOAD_OP_CLEAR
+    VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}; // black with 100% opacity
+    render_pass_config.clearValueCount = 1;
+    render_pass_config.pClearValues = &clear_color;
+
+    // sets up the render pass
+    // two values for render pass command creation
+    // - VK_SUBPASS_CONTENTS_INLINE - render pass commands embedded in primary command buffer
+    // - VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS - render pass commands executed from secondary command buffers
+    vkCmdBeginRenderPass(m_command_buffer, &render_pass_config, VK_SUBPASS_CONTENTS_INLINE); // command recording function first arg is always buffer
+    // binds the command buffer to the graphics pipeline
+    // second param specifies if pipeline is graphics vs compute
+    vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
+
+    // these two are dynamic in this implementation
+    // view port
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(m_swapchain_extent.width); // match to swapchain size
+    viewport.height = static_cast<float>(m_swapchain_extent.height);
+    viewport.minDepth = 0.0f; // near clipping plane
+    viewport.maxDepth = 1.0f; // far clipping plane
+    vkCmdSetViewport(m_command_buffer, 0, 1, &viewport); // bind viewport to command buffer (dynamic state)
+
+    // scissor rectangle (full extend of image/same size as framebuffer)
+    VkRect2D scissor_rectangle{};
+    scissor_rectangle.offset = {0, 0};
+    scissor_rectangle.extent = m_swapchain_extent;
+    vkCmdSetScissor(m_command_buffer, 0, 1, &scissor_rectangle);
+
+    // this command atcually draws the triangle :D
+    // - 2nd param - vertexCount - number of vertices
+    // - 3rd param - instanceCount - number of instances, 1 if not doing instanced rendering
+    // - 4th param - firstVertex - offset in vertex buffer, lowest value of gl_VertexIndex
+    // - 5th param - firstInstance - offset for instanced render, lowest value of gl_InstanceIndex
+    vkCmdDraw(m_command_buffer, 3, 1, 0, 0);
+
+    vkCmdEndRenderPass(m_command_buffer);
+
+    if (vkEndCommandBuffer(m_command_buffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer");
+    }
 }
 
 void TriangleRenderer::createFrameBuffers() {
@@ -169,23 +273,6 @@ void TriangleRenderer::createGraphicsPipeline() {
     input_assembly_config.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     input_assembly_config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     input_assembly_config.primitiveRestartEnable = VK_FALSE; // VK_TRUE lets you break up lines and triangles in the _STRIP topology modes using index of 0xFFFF or 0xFFFFFFFF
-
-    /*
-    // these two are dynamic in this implementation
-    // view port
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) m_swapchain_extent.width; // match to swapchain size
-    viewport.height = (float) m_swapchain_extent.height;
-    viewport.minDepth = 0.0f; // near clipping plane
-    viewport.maxDepth = 1.0f; // far clipping plane
-
-    // scissor rectangle (full extend of image/same size as framebuffer)
-    VkRect2D scissor_rectangle{};
-    scissor_rectangle.offset = {0, 0};
-    scissor_rectangle.extent = m_swapchain_extent;
-    */
 
     // view port state (dynamic)
     VkPipelineViewportStateCreateInfo viewport_state_config;
@@ -827,6 +914,9 @@ void TriangleRenderer::mainLoop() {
 }
 
 void TriangleRenderer::cleanup() {
+    // destroy the command pool
+    vkDestroyCommandPool(m_logical_device, m_command_pool, nullptr);
+
     // destroy framebuffers
     for (auto framebuffer : m_swapchain_framebuffer) {
         vkDestroyFramebuffer(m_logical_device, framebuffer, nullptr);

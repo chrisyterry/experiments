@@ -235,6 +235,25 @@ private:
     void createFrameBuffers();
 
     /**
+     * @brief create a command pool
+     */
+    void createCommandPool();
+
+    /**
+     * @brief create a command buffer
+     */
+    void createCommandBuffer();
+
+    /**
+     * @brief record commands for a command buffer
+     * @note calling this function on an existing buffer will reset it; can't append to command buffers
+     * 
+     * @param command_buffer the command buffer to populate
+     * @param image_index index of current swapchain image to write to
+     */
+    void recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index);
+
+    /**
      * @brief create a VK shader module from parsed SPV binary
      * 
      * @param shader_code byte code for shader
@@ -338,6 +357,10 @@ private:
     VkPipelineLayout m_pipeline_layout; ///< graphics pipeline layout
     VkRenderPass m_render_pass;         ///< render pass
     VkPipeline m_graphics_pipeline;     ///< graphics pipeline
+
+    // command pool
+    VkCommandPool m_command_pool; ///< command pool for execution
+    VkCommandBuffer m_command_buffer; ///< command buffer (freed when associated command pool is destroyed)
 
     // Debugging
     #define NDEBUG

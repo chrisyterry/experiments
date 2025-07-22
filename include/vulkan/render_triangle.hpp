@@ -391,9 +391,7 @@ private:
     VkSemaphore m_render_finished_semaphore; ///< semaphore to signal rendering has finished
     VkFence m_inflight_fence; ///< fence to ensure single frame is rendered
 
-    // Debugging
-    #define NDEBUG
-
+    // NDEBUG is set if its a debug build, including RelWithDebInfo
     #ifdef NDEBUG
         const bool m_enable_validation_layers = true;
     #else

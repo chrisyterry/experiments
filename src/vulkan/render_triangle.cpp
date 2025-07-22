@@ -42,7 +42,7 @@ void TriangleRenderer::initVulkan() {
     createFrameBuffers(); // create framebuffers
     createCommandPool(); // create command pool
     createCommandBuffer(); // create command buffer
-    createSyncObjects();
+    createSyncObjects(); // create synchronization primitives
 }
 
 void TriangleRenderer::createSyncObjects() {
@@ -412,6 +412,8 @@ void TriangleRenderer::createGraphicsPipeline() {
     if (vkCreatePipelineLayout(m_logical_device, &pipeline_layout_config, nullptr, &m_pipeline_layout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout");
     }
+
+    std::cout << "wot" << std::endl;
 
     // graphics pipeline
     VkGraphicsPipelineCreateInfo pipeline_config{};

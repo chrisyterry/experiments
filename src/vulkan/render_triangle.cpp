@@ -42,10 +42,35 @@ void TriangleRenderer::initVulkan() {
     createFrameBuffers(); // create framebuffers
     createCommandPool(); // create command pool
     createCommandBuffer(); // create command buffer
+    createSyncObjects();
+}
+
+void TriangleRenderer::createSyncObjects() {
+    VkSemaphoreCreateInfo semaphore_config{};
+    semaphore_config.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fence_config{};
+    fence_config.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_config.flags = VK_FENCE_CREATE_SIGNALED_BIT; // this lets us get past the first frame
+
+    // create synchronization primitives
+    bool image_available_failed = vkCreateSemaphore(m_logical_device, &semaphore_config, nullptr, &m_image_avialble_sempahore) != VK_SUCCESS;
+    bool render_finished_failed = vkCreateSemaphore(m_logical_device, &semaphore_config, nullptr, &m_render_finished_semaphore) != VK_SUCCESS;
+    bool inflight_failed = vkCreateFence(m_logical_device, &fence_config, nullptr, &m_inflight_fence) != VK_SUCCESS;
+
+    // if creation failed
+    if (image_available_failed || render_finished_failed || inflight_failed) {
+        throw std::runtime_error("Could not create synchronization primitives!");
+    }
+}
+
+void TriangleRenderer::cleanupSyncObjects() {
+    vkDestroySemaphore(m_logical_device, m_image_avialble_sempahore, nullptr);
+    vkDestroySemaphore(m_logical_device, m_render_finished_semaphore, nullptr);
+    vkDestroyFence(m_logical_device, m_inflight_fence, nullptr);
 }
 
 void TriangleRenderer::createCommandBuffer() {
-
     VkCommandBufferAllocateInfo allocation_config{};
     allocation_config.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocation_config.commandPool = m_command_pool;
@@ -75,7 +100,7 @@ void TriangleRenderer::createCommandPool() {
     // command pool can only allocate buffers submitted to a single type of queue
 
     if (vkCreateCommandPool(m_logical_device, &pool_info, nullptr, &m_command_pool) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to cerate graphics command pool!");
+        throw std::runtime_error("Failed to create graphics command pool!");
     }
 }
 
@@ -148,7 +173,7 @@ void TriangleRenderer::recordCommandBuffer(VkCommandBuffer command_buffer, uint3
 
 void TriangleRenderer::createFrameBuffers() {
     // resize so we have a frame buffer entry for each swapchain image
-    m_swapchain_framebuffer.resize(m_swapchain_image_views.size() - 1);
+    m_swapchain_framebuffer.resize(m_swapchain_image_views.size());
 
     // for each swapchain image
     for (size_t i = 0; i < m_swapchain_image_views.size(); ++i) {
@@ -212,12 +237,22 @@ void TriangleRenderer::createRenderPass() {
     subpass.pDepthStencilAttachment = nullptr; // attachment for depth and stencil data
     subpass.pPreserveAttachments = nullptr;    // attachmenbts for data that is unused but needs to be preserved
 
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL; // implicit subpass before or after rendering
+    dependency.dstSubpass = 0; // subpass index (we just have one); has to be higher than srcSubpass unless using VK_SUBPASS_EXTERNAL
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; // operation to wait on
+    dependency.srcAccessMask = 0; // stage that this occurs
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // writing of color output
+
     VkRenderPassCreateInfo render_pass_config{};
     render_pass_config.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_config.attachmentCount = 1;
     render_pass_config.pAttachments = &color_attachment;
     render_pass_config.subpassCount = 1;
     render_pass_config.pSubpasses = &subpass;
+    render_pass_config.dependencyCount = 1;
+    render_pass_config.pDependencies = &dependency;
 
     if (vkCreateRenderPass(m_logical_device, &render_pass_config, nullptr, &m_render_pass) != VK_SUCCESS) {
         throw std::runtime_error("failed to create render pass!");
@@ -225,6 +260,7 @@ void TriangleRenderer::createRenderPass() {
 }
 
 void TriangleRenderer::createGraphicsPipeline() {
+
     // load shaders
     ///\todo figure out a better way of doing the paths
     std::vector<char> vertex_shader_code = readBinaryFile("/home/chriz/Development/experiments/shaders/bin/triangle_vertex_shader.spv");
@@ -400,7 +436,6 @@ void TriangleRenderer::createGraphicsPipeline() {
     // base pipeline (from deriving from an existing piepline)
     // only used if K_PIPELINE_CREATE_DERIVATIVE_BIT is specified in VkGraphicsPipelineCreateInfo
     pipeline_config.basePipelineHandle = VK_NULL_HANDLE; // handle to existing piepline to use as base (optional)
-    pipeline_config.basePipelineIndex = -1; // index of pipeline that is about to be created to use as base (optional)
 
     // cerate the pipeline, can create multiple pipelines with one call
     // second param is a pipeline cache which can be used to make pipeline setup faster
@@ -411,6 +446,7 @@ void TriangleRenderer::createGraphicsPipeline() {
     // destroy shaders
     vkDestroyShaderModule(m_logical_device, vertex_shader, nullptr);
     vkDestroyShaderModule(m_logical_device, fragment_shader, nullptr);
+    std::cout << "likely this" << std::endl;
 }
 
 VkShaderModule TriangleRenderer::createShaderModule(const std::vector<char>& shader_code) {
@@ -469,7 +505,7 @@ void TriangleRenderer::createSwapChain() {
     // number of images in the swapchain (want at least 1 more than min so we don't have to wait to render next image)
     uint32_t image_count = swapchain_support.capabilites.minImageCount + 1;
     // if unlimited image count (maxImageCount = 0) has not been specified
-    if (swapchain_support.capabilites.maxImageCount > 0) {
+    if (swapchain_support.capabilites.maxImageCount > 0 && image_count > swapchain_support.capabilites.maxImageCount) {
         image_count = std::max(image_count, swapchain_support.capabilites.maxImageCount);
     }
 
@@ -887,8 +923,7 @@ void TriangleRenderer::createInstance() {
 
     // initialize the vulkan instance (general vulkan pattern is config, custom callbacks pointer, handle to new object)
     // and check if intialization was successful
-    VkResult result = vkCreateInstance(&instance_config, nullptr, &m_vulkan_instance);
-    if (result != VK_SUCCESS) {
+    if (vkCreateInstance(&instance_config, nullptr, &m_vulkan_instance) != VK_SUCCESS) {
         throw std::runtime_error("could not create vulkan instance!");
     }
 }
@@ -910,10 +945,73 @@ void TriangleRenderer::mainLoop() {
     // while the window is not closed
     while (!glfwWindowShouldClose(m_window)) {
         glfwPollEvents(); // check for window events (e.g. pressing the x button)
+        drawFrame(); // draw the frame :D
     }
+
+    // wait for logical device to finish operations
+    vkDeviceWaitIdle(m_logical_device);
+    // can also use vkQueueWaitIdle to wait for a specific command queue to be finished
+}
+
+void TriangleRenderer::drawFrame() {
+    // wait for previous frame to conclude (will wait for multiple fences, VK_TRUE means to wait for all, VK_FALSE means to wait for any)
+    vkWaitForFences(m_logical_device, 1, &m_inflight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(m_logical_device, 1, &m_inflight_fence);
+
+    uint32_t image_index;
+    // params:
+    // - 2 - where to get image
+    // - 3 - timeout in nanoseconds
+    // - 4, 5 - sync primitives to signal when command has completed
+    vkAcquireNextImageKHR(m_logical_device, m_swapchain, UINT64_MAX, m_image_avialble_sempahore, VK_NULL_HANDLE, &image_index);
+
+    // reset command buffer so that it can be recorded (second param is a buffer resets flag)
+    vkResetCommandBuffer(m_command_buffer, 0);
+    // record the command buffer
+    recordCommandBuffer(m_command_buffer, image_index);
+
+    VkSubmitInfo submission_config{};
+    submission_config.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    
+    // which semaphores to wait on before beginning
+    VkSemaphore wait_semaphores[] = {m_image_avialble_sempahore}; // which sempahores to wait on
+    VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}; // which pipeline stages to wait in
+    submission_config.waitSemaphoreCount = 1;
+    submission_config.pWaitSemaphores = wait_semaphores;
+    submission_config.pWaitDstStageMask = wait_stages;
+    // which command buffers to submit
+    submission_config.commandBufferCount = 1;
+    submission_config.pCommandBuffers = &m_command_buffer;
+    // which semaphores to signal on completion
+    VkSemaphore signal_semaphores[] = {m_render_finished_semaphore};
+    submission_config.signalSemaphoreCount = 1;
+    submission_config.pSignalSemaphores = signal_semaphores;
+
+    // last param is fence to signal on completion
+    if (vkQueueSubmit(m_graphics_queue, 1, &submission_config, m_inflight_fence) != VK_SUCCESS) {
+        throw std::runtime_error("failed to submit draw command buffer!");
+    }
+
+    VkPresentInfoKHR presentation_config{};
+    presentation_config.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    // sempahores to wait on for presentation
+    presentation_config.waitSemaphoreCount = 1;
+    presentation_config.pWaitSemaphores = signal_semaphores;
+
+    VkSwapchainKHR swapchains[] = {m_swapchain};
+    presentation_config.swapchainCount = 1;
+    presentation_config.pSwapchains = swapchains; // swapchains to present to
+    presentation_config.pImageIndices = &image_index; // almost always rendering to single index
+    presentation_config.pResults = nullptr; // optional array of VkResult values for each individual swapchain success (unnesscary for one swapchain)
+    
+    vkQueuePresentKHR(m_presentation_queue, &presentation_config);
+
 }
 
 void TriangleRenderer::cleanup() {
+    // destroy synchronization objects
+    cleanupSyncObjects();
+
     // destroy the command pool
     vkDestroyCommandPool(m_logical_device, m_command_pool, nullptr);
 
@@ -942,6 +1040,7 @@ void TriangleRenderer::cleanup() {
     glfwDestroyWindow(m_window); // destroy the window
     glfwTerminate(); // terminate glfw
 }
+
 
 int main () {
     std::unique_ptr<TriangleRenderer> renderer = std::make_unique<TriangleRenderer>();

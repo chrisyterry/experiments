@@ -137,6 +137,20 @@ private:
     void mainLoop();
 
     /**
+     * @brief render the frame
+     * 
+     * @note rendering a frame involves a few common steps"
+     *      1) wait for previous frame to finish
+     *      2) acquire image from swapchain
+     *      3) record command buffer to draw scene to image
+     *      4) submit command buffer
+     *      5) present image
+     * 
+     * @note a lot of command are asynchronous, have to manually enforce order
+     */
+    void drawFrame();
+
+    /**
      * @brief get available extensions
      */
     void getAvailableExtensions();
@@ -278,6 +292,16 @@ private:
     void cleanup();
 
     /**
+     * @brief create synchronization objects
+     */
+    void createSyncObjects();
+
+    /**
+     * @brief cleanup synchronization objects
+     */
+    void cleanupSyncObjects();
+
+    /**
      * @brief check which validation layers are available
      * 
      * @param validation_layers the validation layers to be tested 
@@ -361,6 +385,11 @@ private:
     // command pool
     VkCommandPool m_command_pool; ///< command pool for execution
     VkCommandBuffer m_command_buffer; ///< command buffer (freed when associated command pool is destroyed)
+
+    // synchronization
+    VkSemaphore m_image_avialble_sempahore; ///< semaphore to signal image availability
+    VkSemaphore m_render_finished_semaphore; ///< semaphore to signal rendering has finished
+    VkFence m_inflight_fence; ///< fence to ensure single frame is rendered
 
     // Debugging
     #define NDEBUG

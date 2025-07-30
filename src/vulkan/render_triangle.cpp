@@ -3,7 +3,6 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
-#include <memory>
 #include <stdint.h>
 #include <cstring>
 #include <map>
@@ -41,47 +40,30 @@ void TriangleRenderer::initVulkan() {
     createGraphicsPipeline(); // create graphics pipeline
     createFrameBuffers(); // create framebuffers
     createCommandPool(); // create command pool
-    createCommandBuffer(); // create command buffer
-    createSyncObjects(); // create synchronization primitives
+    createFrames(); // create command buffer and sync objects for frames in flight
 }
 
-void TriangleRenderer::createSyncObjects() {
-    VkSemaphoreCreateInfo semaphore_config{};
-    semaphore_config.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    VkFenceCreateInfo fence_config{};
-    fence_config.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_config.flags = VK_FENCE_CREATE_SIGNALED_BIT; // this lets us get past the first frame
-
-    // create synchronization primitives
-    bool image_available_failed = vkCreateSemaphore(m_logical_device, &semaphore_config, nullptr, &m_image_avialble_sempahore) != VK_SUCCESS;
-    bool render_finished_failed = vkCreateSemaphore(m_logical_device, &semaphore_config, nullptr, &m_render_finished_semaphore) != VK_SUCCESS;
-    bool inflight_failed = vkCreateFence(m_logical_device, &fence_config, nullptr, &m_inflight_fence) != VK_SUCCESS;
-
-    // if creation failed
-    if (image_available_failed || render_finished_failed || inflight_failed) {
-        throw std::runtime_error("Could not create synchronization primitives!");
-    }
-}
-
-void TriangleRenderer::cleanupSyncObjects() {
-    vkDestroySemaphore(m_logical_device, m_image_avialble_sempahore, nullptr);
-    vkDestroySemaphore(m_logical_device, m_render_finished_semaphore, nullptr);
-    vkDestroyFence(m_logical_device, m_inflight_fence, nullptr);
-}
-
-void TriangleRenderer::createCommandBuffer() {
+void TriangleRenderer::createFrames() {
     VkCommandBufferAllocateInfo allocation_config{};
-    allocation_config.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocation_config.sType       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocation_config.commandPool = m_command_pool;
     // two levels available:
     // - VK_COMMAND_BUFFER_LEVEL_PRIMARY - can be submitted to queue for execution but can't be called from other buffers
     // - VK_COMMAND_BUFFER_LEVEL_SECONDARY - can't submit directly, but can be called from primary buffers
-    allocation_config.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocation_config.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocation_config.commandBufferCount = 1;
 
-    if (vkAllocateCommandBuffers(m_logical_device, &allocation_config, &m_command_buffer) != VK_SUCCESS) {
+    std::vector<VkCommandBuffer> command_buffers(m_max_frames_in_flight);
+    allocation_config.commandBufferCount = (uint32_t)command_buffers.size();
+
+    if (vkAllocateCommandBuffers(m_logical_device, &allocation_config, command_buffers.data()) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate command buffers");
+    }
+
+    // for each command buffer
+    for (auto buffer = command_buffers.begin(); buffer != command_buffers.end(); ++buffer) {
+        // create a frame buffer to wrap the command buffer
+        m_frames.emplace_back(std::make_unique<Frame>(m_logical_device, *buffer));
     }
 }
 
@@ -135,10 +117,10 @@ void TriangleRenderer::recordCommandBuffer(VkCommandBuffer command_buffer, uint3
     // two values for render pass command creation
     // - VK_SUBPASS_CONTENTS_INLINE - render pass commands embedded in primary command buffer
     // - VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS - render pass commands executed from secondary command buffers
-    vkCmdBeginRenderPass(m_command_buffer, &render_pass_config, VK_SUBPASS_CONTENTS_INLINE); // command recording function first arg is always buffer
+    vkCmdBeginRenderPass(command_buffer, &render_pass_config, VK_SUBPASS_CONTENTS_INLINE); // command recording function first arg is always buffer
     // binds the command buffer to the graphics pipeline
     // second param specifies if pipeline is graphics vs compute
-    vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
 
     // these two are dynamic in this implementation
     // view port
@@ -149,24 +131,24 @@ void TriangleRenderer::recordCommandBuffer(VkCommandBuffer command_buffer, uint3
     viewport.height = static_cast<float>(m_swapchain_extent.height);
     viewport.minDepth = 0.0f; // near clipping plane
     viewport.maxDepth = 1.0f; // far clipping plane
-    vkCmdSetViewport(m_command_buffer, 0, 1, &viewport); // bind viewport to command buffer (dynamic state)
+    vkCmdSetViewport(command_buffer, 0, 1, &viewport); // bind viewport to command buffer (dynamic state)
 
     // scissor rectangle (full extend of image/same size as framebuffer)
     VkRect2D scissor_rectangle{};
     scissor_rectangle.offset = {0, 0};
     scissor_rectangle.extent = m_swapchain_extent;
-    vkCmdSetScissor(m_command_buffer, 0, 1, &scissor_rectangle);
+    vkCmdSetScissor(command_buffer, 0, 1, &scissor_rectangle);
 
     // this command atcually draws the triangle :D
     // - 2nd param - vertexCount - number of vertices
     // - 3rd param - instanceCount - number of instances, 1 if not doing instanced rendering
     // - 4th param - firstVertex - offset in vertex buffer, lowest value of gl_VertexIndex
     // - 5th param - firstInstance - offset for instanced render, lowest value of gl_InstanceIndex
-    vkCmdDraw(m_command_buffer, 3, 1, 0, 0);
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
 
-    vkCmdEndRenderPass(m_command_buffer);
+    vkCmdEndRenderPass(command_buffer);
 
-    if (vkEndCommandBuffer(m_command_buffer) != VK_SUCCESS) {
+    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer");
     }
 }
@@ -413,8 +395,6 @@ void TriangleRenderer::createGraphicsPipeline() {
         throw std::runtime_error("failed to create pipeline layout");
     }
 
-    std::cout << "wot" << std::endl;
-
     // graphics pipeline
     VkGraphicsPipelineCreateInfo pipeline_config{};
     pipeline_config.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -448,7 +428,6 @@ void TriangleRenderer::createGraphicsPipeline() {
     // destroy shaders
     vkDestroyShaderModule(m_logical_device, vertex_shader, nullptr);
     vkDestroyShaderModule(m_logical_device, fragment_shader, nullptr);
-    std::cout << "likely this" << std::endl;
 }
 
 VkShaderModule TriangleRenderer::createShaderModule(const std::vector<char>& shader_code) {
@@ -957,40 +936,40 @@ void TriangleRenderer::mainLoop() {
 
 void TriangleRenderer::drawFrame() {
     // wait for previous frame to conclude (will wait for multiple fences, VK_TRUE means to wait for all, VK_FALSE means to wait for any)
-    vkWaitForFences(m_logical_device, 1, &m_inflight_fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(m_logical_device, 1, &m_inflight_fence);
+    vkWaitForFences(m_logical_device, 1, &m_frames[m_current_frame]->m_inflight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(m_logical_device, 1, &m_frames[m_current_frame]->m_inflight_fence);
 
     uint32_t image_index;
     // params:
     // - 2 - where to get image
     // - 3 - timeout in nanoseconds
     // - 4, 5 - sync primitives to signal when command has completed
-    vkAcquireNextImageKHR(m_logical_device, m_swapchain, UINT64_MAX, m_image_avialble_sempahore, VK_NULL_HANDLE, &image_index);
+    vkAcquireNextImageKHR(m_logical_device, m_swapchain, UINT64_MAX, m_frames[m_current_frame]->m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
 
     // reset command buffer so that it can be recorded (second param is a buffer resets flag)
-    vkResetCommandBuffer(m_command_buffer, 0);
+    vkResetCommandBuffer(m_frames[m_current_frame]->m_command_buffer, 0);
     // record the command buffer
-    recordCommandBuffer(m_command_buffer, image_index);
+    recordCommandBuffer(m_frames[m_current_frame]->m_command_buffer, image_index);
 
     VkSubmitInfo submission_config{};
     submission_config.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     
     // which semaphores to wait on before beginning
-    VkSemaphore wait_semaphores[] = {m_image_avialble_sempahore}; // which sempahores to wait on
+    VkSemaphore wait_semaphores[] = {m_frames[m_current_frame]->m_image_available_semaphore}; // which sempahores to wait on
     VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}; // which pipeline stages to wait in
     submission_config.waitSemaphoreCount = 1;
     submission_config.pWaitSemaphores = wait_semaphores;
     submission_config.pWaitDstStageMask = wait_stages;
     // which command buffers to submit
     submission_config.commandBufferCount = 1;
-    submission_config.pCommandBuffers = &m_command_buffer;
+    submission_config.pCommandBuffers = &m_frames[m_current_frame]->m_command_buffer;
     // which semaphores to signal on completion
-    VkSemaphore signal_semaphores[] = {m_render_finished_semaphore};
+    VkSemaphore signal_semaphores[] = {m_frames[m_current_frame]->m_render_finished_semaphore};
     submission_config.signalSemaphoreCount = 1;
     submission_config.pSignalSemaphores = signal_semaphores;
 
     // last param is fence to signal on completion
-    if (vkQueueSubmit(m_graphics_queue, 1, &submission_config, m_inflight_fence) != VK_SUCCESS) {
+    if (vkQueueSubmit(m_graphics_queue, 1, &submission_config, m_frames[m_current_frame]->m_inflight_fence) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
 
@@ -1008,11 +987,16 @@ void TriangleRenderer::drawFrame() {
     
     vkQueuePresentKHR(m_presentation_queue, &presentation_config);
 
+    // set the next frame to render to
+    m_current_frame = (m_current_frame + 1) % m_max_frames_in_flight;
 }
 
 void TriangleRenderer::cleanup() {
-    // destroy synchronization objects
-    cleanupSyncObjects();
+    // cleanup frames
+    for (auto frame = m_frames.begin(); frame != m_frames.end(); ++frame) {
+        // cleanup the sync objects for the frame
+        (*frame)->cleanupSyncObjects();
+    }
 
     // destroy the command pool
     vkDestroyCommandPool(m_logical_device, m_command_pool, nullptr);

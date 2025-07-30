@@ -21,7 +21,7 @@ case "$1" in
     -h--help) print_help_string_and_exit ;;
     release) build_mode="Release"; shift ;;
     debug) build_mode="Debug"; shift ;;
-    debrelinfo) build_mode=RelWithDebInfo; shift ;;
+    reldebinfo) build_mode=RelWithDebInfo; shift ;;
     minsize) build_mode=MinSizeRel; shift ;;
     *) echo "Invalid argument $1"; print_help_string_and_exit
 esac

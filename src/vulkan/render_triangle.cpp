@@ -20,12 +20,20 @@ void TriangleRenderer::run() {
 void TriangleRenderer::initWindow() {
     glfwInit(); // initialize GLFW
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // disable OpenGL context
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); // don't make window resizable (for now)
 
     const uint16_t WINDOW_HEIGHT = 600;
     const uint16_t WINDOW_WIDTH = 800;
 
     m_window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Vulkan", nullptr, nullptr); // create a window named "vulkan", 4th param is monitor to render on, last parameter is OpenGL only
+    // store a pointer to the renderer class
+    glfwSetWindowUserPointer(m_window, this);
+    glfwSetFramebufferSizeCallback(m_window, TriangleRenderer::framebufferResizeCallback);
+}
+
+void TriangleRenderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    // get the pointer to the renderer class
+    auto renderer = reinterpret_cast<TriangleRenderer*>(glfwGetWindowUserPointer(window));
+    renderer->frameBufferResized();
 }
 
 void TriangleRenderer::initVulkan() {
@@ -534,6 +542,43 @@ void TriangleRenderer::createSwapChain() {
     m_swapchain_extent = extent;
 }
 
+void TriangleRenderer::recreateSwapChain() {
+    // get the frame buffer size
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(m_window, &width, &height);
+    // if frame buffer has been minimized
+    if (width == 0 || height == 0) {
+        // wait until the window is no longer minimized
+        glfwGetFramebufferSize(m_window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(m_logical_device); // wait till GPU is done
+
+    cleanupSwapChain();
+
+    // not recreating renderpass though it's possible you may need to do so in some instances 
+    // (e.g. moving window to HDR monitor)
+    createSwapChain();
+    createImageViews();
+    createFrameBuffers();
+}
+
+void TriangleRenderer::cleanupSwapChain() {
+    // destroy framebuffers
+    for (auto framebuffer : m_swapchain_framebuffer) {
+        vkDestroyFramebuffer(m_logical_device, framebuffer, nullptr);
+    }
+
+    // destroy image views
+    for (auto view : m_swapchain_image_views) {
+        vkDestroyImageView(m_logical_device, view, nullptr);
+    }
+
+    // destroy the swapchain
+    vkDestroySwapchainKHR(m_logical_device, m_swapchain, nullptr);
+}
+
 void TriangleRenderer::createSurface() {
     // if we were unable to create a surface to render to
     if (glfwCreateWindowSurface(m_vulkan_instance, m_window, nullptr, &m_surface) != VK_SUCCESS) {
@@ -937,14 +982,24 @@ void TriangleRenderer::mainLoop() {
 void TriangleRenderer::drawFrame() {
     // wait for previous frame to conclude (will wait for multiple fences, VK_TRUE means to wait for all, VK_FALSE means to wait for any)
     vkWaitForFences(m_logical_device, 1, &m_frames[m_current_frame]->m_inflight_fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(m_logical_device, 1, &m_frames[m_current_frame]->m_inflight_fence);
 
     uint32_t image_index;
     // params:
     // - 2 - where to get image
     // - 3 - timeout in nanoseconds
     // - 4, 5 - sync primitives to signal when command has completed
-    vkAcquireNextImageKHR(m_logical_device, m_swapchain, UINT64_MAX, m_frames[m_current_frame]->m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+    VkResult result = vkAcquireNextImageKHR(m_logical_device, m_swapchain, UINT64_MAX, m_frames[m_current_frame]->m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+
+    // if the window size has changed
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapChain();
+        return;
+    // don't attempt to reacreate in suboptimal case
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        throw std::runtime_error("failed to acquire swapchain image");
+    } 
+
+    vkResetFences(m_logical_device, 1, &m_frames[m_current_frame]->m_inflight_fence);
 
     // reset command buffer so that it can be recorded (second param is a buffer resets flag)
     vkResetCommandBuffer(m_frames[m_current_frame]->m_command_buffer, 0);
@@ -985,13 +1040,30 @@ void TriangleRenderer::drawFrame() {
     presentation_config.pImageIndices = &image_index; // almost always rendering to single index
     presentation_config.pResults = nullptr; // optional array of VkResult values for each individual swapchain success (unnesscary for one swapchain)
     
-    vkQueuePresentKHR(m_presentation_queue, &presentation_config);
+    result = vkQueuePresentKHR(m_presentation_queue, &presentation_config);
+    // if the window size has changed
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_framebuffer_resize) {
+        m_framebuffer_resize = false;
+        recreateSwapChain();
+        return;
+    } else if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
 
     // set the next frame to render to
     m_current_frame = (m_current_frame + 1) % m_max_frames_in_flight;
 }
 
 void TriangleRenderer::cleanup() {
+
+    //cleanup the swapchain
+    cleanupSwapChain();
+
+    // destory pipeline layout
+    vkDestroyPipeline(m_logical_device, m_graphics_pipeline, nullptr);
+    vkDestroyPipelineLayout(m_logical_device, m_pipeline_layout, nullptr);
+    vkDestroyRenderPass(m_logical_device, m_render_pass, nullptr);
+
     // cleanup frames
     for (auto frame = m_frames.begin(); frame != m_frames.end(); ++frame) {
         // cleanup the sync objects for the frame
@@ -1001,28 +1073,15 @@ void TriangleRenderer::cleanup() {
     // destroy the command pool
     vkDestroyCommandPool(m_logical_device, m_command_pool, nullptr);
 
-    // destroy framebuffers
-    for (auto framebuffer : m_swapchain_framebuffer) {
-        vkDestroyFramebuffer(m_logical_device, framebuffer, nullptr);
-    }
-
-    // destory pipeline layout
-    vkDestroyPipeline(m_logical_device, m_graphics_pipeline, nullptr);
-    vkDestroyPipelineLayout(m_logical_device, m_pipeline_layout, nullptr);
-    vkDestroyRenderPass(m_logical_device, m_render_pass, nullptr);
-
-    // destroy image views
-    for (auto view : m_swapchain_image_views) {
-        vkDestroyImageView(m_logical_device, view, nullptr);
-    }
-    vkDestroySwapchainKHR(m_logical_device, m_swapchain, nullptr);
     vkDestroyDevice(m_logical_device, nullptr);
     if (m_enable_validation_layers) {
         // destroy the debug messenger
         destroyDebugUtilsMessengerEXT(m_vulkan_instance, m_debug_messenger, nullptr);
     }
+
     vkDestroySurfaceKHR(m_vulkan_instance, m_surface, nullptr);
     vkDestroyInstance(m_vulkan_instance, nullptr); // destory vulkan instance, nullptr is for callback
+
     glfwDestroyWindow(m_window); // destroy the window
     glfwTerminate(); // terminate glfw
 }

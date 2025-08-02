@@ -79,6 +79,21 @@ class TriangleRenderer {
      */
     void run();
 
+    /**
+     * @brief callback for framebuffer resize
+     * @note glfw callback can't call class methods directly, have to make it static
+     * 
+     * @param window the GLFW window
+     * @param width the window width [pix]
+     * @param height the window height [pix]
+     */
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+
+    /**
+     * @brief method to inform class that the framebuffer has been resized
+     */
+    void frameBufferResized() {m_framebuffer_resize = true;};
+
   private:
     /**
      * @brief structure to hold queue family indices
@@ -226,6 +241,16 @@ class TriangleRenderer {
      * @brief create a swapchain with the logical device
      */
     void createSwapChain();
+
+    /**
+     * @brief reacreate the swapchain (e.g. due to window resize)
+     */
+    void recreateSwapChain();
+
+    /**
+     * @brief cleanup swapchain objects
+     */
+    void cleanupSwapChain();
 
     /**
      * @brief create swapchain image views
@@ -424,6 +449,7 @@ class TriangleRenderer {
     uint8_t                             m_current_frame = 0;  ///< current fram being rendered to
 
     // swapchain
+    bool                       m_framebuffer_resize = false;  ///< whether the framebuffer ahs been resized
     std::vector<VkFramebuffer> m_swapchain_framebuffer;  ///< frame buffer for the swapchain
     VkSwapchainKHR             m_swapchain;  ///< swap chain for images to render to the screen
     std::vector<VkImage>       m_swapchain_images;  ///< images in the swapchain

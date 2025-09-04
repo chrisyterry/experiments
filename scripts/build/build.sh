@@ -30,8 +30,8 @@ done
 echo "building $build_mode"
 
 # make a build directory within the build directory
-mkdir "$SCRIPT_DIR/../../build/build"
-cd "$SCRIPT_DIR/../../build/build"
-cmake -DCMAKE_BUILD_TYPE=$build_mode ..
-make
+mkdir "$SCRIPT_DIR/../../build"
+cd "$SCRIPT_DIR/../../build"
+cmake -G Ninja -DCMAKE_BUILD_TYPE=$build_mode .
+ninja -C .
 cd $start_dir

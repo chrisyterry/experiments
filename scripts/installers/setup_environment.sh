@@ -3,6 +3,7 @@
 # store the current script directory
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
+sudo add-apt-repository universe
 sudo apt update
 
 install_vscode=0
@@ -30,13 +31,18 @@ if [$install_conda == 1]; then
 fi
 # C++
 echo "installing GCC"
-sudo apt install build-essential # gnu C++ compiler
+sudo apt-get install -y build-essential cmake ninja-build # gnu C++ compiler
+sudo apt install -y gcc-14 g++-14
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 13
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 14
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 13
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 14
 echo "installing CMake"
-sudo apt install cmake # CMake
+sudo apt install -y cmake # CMake
 echo "installing Eigen"
-sudo apt install libeigen3-dev # Eigen
+sudo apt install -y libeigen3-dev # Eigen
 echo "installing clang"
-sudo sudo apt install clang # clang
+sudo apt install -y clang # clang
 
 # source library-specific installers; these will be prefixed with install_
 for script in "$SCRIPT_DIR"/install_*.sh; do
@@ -49,8 +55,17 @@ for script in "$SCRIPT_DIR"/install_*.sh; do
   fi
 done
 
-
 # doxygen
 sudo apt-add-repository universe
 sudo apt-get update
-sudo apt-get install doxygen
+sudo apt-get install -y doxygen
+
+# various linux tools
+sudo apt install -y tree
+sudo apt install -y dust
+sudo apt install -y openssh
+sudo apt install -y rsync
+
+# starship
+curl -sS https://starship.rs/install.sh | sh
+echo "eval '$(starship init bash)'" >> ~/.bashrc

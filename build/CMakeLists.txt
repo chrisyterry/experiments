@@ -1,11 +1,59 @@
-cmake_minimum_required(VERSION 3.10) # minimum CMake version
-project(testProject VERSION 0.1 LANGUAGES CXX) # CMake project name and version; one of these per CMakeLists.txt
+cmake_minimum_required(VERSION 3.28)
+project(VulkanTutorial VERSION 0.1 LANGUAGES CXX)
 
-# specify the C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF) # Generally good practice for portability
-set(EXECUTABLE_OUTPUT_PATH )
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/../bin)
+
+# Enable module scanning and define module-specific flags
+# These lines MUST come after the 'project' command
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+add_compile_options(-fmodules-ts) # this is required for the compiler to work with modules
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
+
+find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
+find_package(Vulkan REQUIRED)
+
+add_library(VulkanCppModule)
+add_library(Vulkan::cppm ALIAS VulkanCppModule)
+
+target_compile_definitions(VulkanCppModule PUBLIC
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+)
+
+target_include_directories(VulkanCppModule
+    PRIVATE
+    "${Vulkan_INCLUDE_DIR}"
+)
+
+message("${Vulkan_INCLUDE_DIR}")
+
+target_link_libraries(VulkanCppModule PUBLIC Vulkan::Vulkan)
+
+target_sources(VulkanCppModule
+    PUBLIC
+    FILE_SET cxx_modules TYPE CXX_MODULES
+    BASE_DIRS "${Vulkan_INCLUDE_DIR}"
+    FILES "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+)
+
+add_executable(nu_triangle ../src/vulkan/modern_render_triangle.cpp)
+
+target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+
+target_link_libraries(nu_triangle
+    PRIVATE
+    Vulkan::cppm
+    glfw
+)
+
+
+#[[
+## Original ##
 
 # set the CMake source directory to the overarching directory and the executable directory to the bin folder to make bins easy to find
 set(CMAKE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/..)
@@ -51,3 +99,4 @@ target_link_libraries(render_triangle
         X11
         Xxf86vm
 )
+]]

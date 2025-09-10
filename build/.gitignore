@@ -1,1 +1,10 @@
-build
+*
+!*/
+
+# track this file
+
+!.gitignore
+
+# whitelist everything in ./config/
+
+!CMakeLists.txt

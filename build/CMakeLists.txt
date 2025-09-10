@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.29)
 project(VulkanTutorial VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -9,7 +9,6 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/../bin)
 # Enable module scanning and define module-specific flags
 # These lines MUST come after the 'project' command
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-add_compile_options(-fmodules-ts) # this is required for the compiler to work with modules
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
@@ -24,6 +23,8 @@ target_compile_definitions(VulkanCppModule PUBLIC
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
     VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
+
+# can disable C++ exceptions using VULKAN_HPP_NO_EXCEPTIONS=1
 
 target_include_directories(VulkanCppModule
     PRIVATE
@@ -50,9 +51,8 @@ target_link_libraries(nu_triangle
     Vulkan::cppm
     glfw
 )
-
-
 #[[
+
 ## Original ##
 
 # set the CMake source directory to the overarching directory and the executable directory to the bin folder to make bins easy to find
@@ -99,4 +99,5 @@ target_link_libraries(render_triangle
         X11
         Xxf86vm
 )
+
 ]]

@@ -42,14 +42,22 @@ target_sources(VulkanCppModule
     FILES "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
+# Device selection
+add_library(device_selection STATIC
+    ${CMAKE_SOURCE_DIR}/../src/vulkan/device_utils.cpp
+)
+target_include_directories(device_selection PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(device_selection
+    Vulkan::cppm
+)
+
+# Renderer
 add_executable(nu_triangle ../src/vulkan/modern_render_triangle.cpp)
-
 target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-
 target_link_libraries(nu_triangle
-    PRIVATE
     Vulkan::cppm
     glfw
+    device_selection
 )
 #[[
 

@@ -27,10 +27,19 @@ constexpr bool VALIDATION_LAYERS = true;
 constexpr bool VALIDATION_LAYERS = false;
 #endif
 
+// homebrew utilities
+#include "vulkan/device_utils.hpp"
+
 class ModernRenderTriangle {
   public:
+
     /**
-     * @brief run the render triangle applciation
+     * @brief construct an instance of the renderer
+     */
+    ModernRenderTriangle();
+
+    /**
+     * @brief run the render triangle application
      */
     void run();
 
@@ -58,11 +67,16 @@ class ModernRenderTriangle {
     std::vector<char const*> getRequiredLayers();
 
     /**
-     * @brief get list of required ecxtensions based on whether validation layers are enabled
+     * @brief get list of required extensions based on whether validation layers are enabled
      * 
      * @return vector of required extensions
      */
     std::vector<char const*> getRequiredExtensions();
+
+    /**
+     * @brief select a physical device/GPU to use
+     */
+    void pickPhysicalDevice();
 
     /**
      * @brief debug callback
@@ -88,9 +102,12 @@ class ModernRenderTriangle {
      */
     void cleanup();
 
-    vk::raii::Context                m_context;  ///< vulkan context
-    vk::raii::Instance               m_instance        = nullptr;  ///< vulkan instance
-    vk::raii::DebugUtilsMessengerEXT m_debug_messenger = nullptr;  ///< can have multiple of these
+    std::unique_ptr<PhysicalDeviceSelector> m_device_selector;  ///< supporting class for selecting physical device
+
+    vk::raii::Context                         m_context;  ///< vulkan context
+    vk::raii::Instance                        m_instance        = nullptr;  ///< vulkan instance
+    vk::raii::DebugUtilsMessengerEXT          m_debug_messenger = nullptr;  ///< can have multiple of these
+    std::unique_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< graphics card
 
     const std::pair<uint32_t, uint32_t> m_window_size = { 800, 800 };
     GLFWwindow*                         m_window;  // GLFW window to render to

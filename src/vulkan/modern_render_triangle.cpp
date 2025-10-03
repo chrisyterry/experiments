@@ -1,5 +1,17 @@
 #include "vulkan/modern_render_triangle.hpp"
 #include <cstring>
+#include <map>
+
+ModernRenderTriangle::ModernRenderTriangle() {
+    std::vector<const char*> required_device_extensions = {
+        vk::KHRSwapchainExtensionName,
+        vk::KHRSpirv14ExtensionName,
+        vk::KHRSynchronization2ExtensionName,
+        vk::KHRCreateRenderpass2ExtensionName
+    };
+
+    m_device_selector = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
+}
 
 void ModernRenderTriangle::initWindow() {
     // initialize GLFW without openGL stuff
@@ -14,7 +26,32 @@ void ModernRenderTriangle::initWindow() {
 void ModernRenderTriangle::initVulkan() {
     createInstance();
     setupDebugMessenger();
+    pickPhysicalDevice();
+
+    VK_API_VERSION_1_3;
 }
+
+void ModernRenderTriangle::pickPhysicalDevice() {
+    auto devices = m_instance.enumeratePhysicalDevices();
+
+    std::multimap<uint32_t, std::unique_ptr<vk::raii::PhysicalDevice>> candidate_devices;
+
+    for (const auto& device : devices) {
+        std::optional<uint32_t> weight = m_device_selector->scoreDevice(device);
+        if (weight.has_value()) {
+            candidate_devices.emplace(weight.value(), std::make_unique<vk::raii::PhysicalDevice>(device));
+        }
+    }
+
+    // if we obtained a valid physical device
+    if (candidate_devices.rbegin()->first > 0) {
+        std::cout << "Selected " << candidate_devices.rbegin()->second->getProperties().deviceName << " with score " << candidate_devices.rbegin()->first << std::endl;
+        m_physical_device = std::move(candidate_devices.rbegin()->second);
+    } else {
+        throw std::runtime_error("failed to find GPUs with Vulkan support!");
+    }
+}
+
 
 void ModernRenderTriangle::setupDebugMessenger() {
     if (!VALIDATION_LAYERS) {

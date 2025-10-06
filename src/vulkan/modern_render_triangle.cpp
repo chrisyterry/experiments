@@ -27,8 +27,17 @@ void ModernRenderTriangle::initWindow() {
 void ModernRenderTriangle::initVulkan() {
     createInstance();
     setupDebugMessenger();
+    createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+}
+
+void ModernRenderTriangle::createSurface() {
+    VkSurfaceKHR surface; // from C API
+    if (glfwCreateWindowSurface(*m_instance, m_window, nullptr, &surface) != 0) {
+        throw std::runtime_error("failed to create window surface!");
+    }
+    m_surface = std::make_unique<vk::raii::SurfaceKHR>(m_instance, surface);
 }
 
 void ModernRenderTriangle::pickPhysicalDevice() {
@@ -58,14 +67,41 @@ void ModernRenderTriangle::createLogicalDevice() {
     // get the first index into queueFamilyProperties which supports graphics
     auto graphics_queue_property = std::ranges::find_if(queue_family_properties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
     assert(graphics_queue_property != queue_family_properties.end() && "No graphics queue family found!");
+    auto graphics_index = static_cast<uint32_t>(std::distance(queue_family_properties.begin(), graphics_queue_property));
 
-    auto graphicsIndex = static_cast<uint32_t>(std::distance(queue_family_properties.begin(), graphics_queue_property));
+    // check if the graphics queue supports presentation
+    auto present_index  = m_physical_device->getSurfaceSupportKHR(graphics_index, *m_surface) ? graphics_index : static_cast<uint32_t>(queue_family_properties.size());
+
+    // if the graphics queue we found does not support presentation
+    if (present_index == queue_family_properties.size()) {
+        for (size_t i = 0; i < queue_family_properties.size(); ++i) {
+            if ((queue_family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
+                m_physical_device->getSurfaceSupportKHR(static_cast<uint32_t>(i), *m_surface)) {
+                graphics_index = static_cast<uint32_t>(i);
+                present_index  = graphics_index;
+            }
+        }
+    }
+
+    // if we can't find a queue that does graphics and presentation
+    if (present_index == queue_family_properties.size()) {
+        for (size_t i = 0; i < queue_family_properties.size(); ++i) {
+            if (m_physical_device->getSurfaceSupportKHR(static_cast<uint32_t>(i), *m_surface)) {
+                present_index = static_cast<uint32_t>(i);
+                break;
+            }
+        }
+    }
+
+    if (graphics_index == queue_family_properties.size() || present_index == queue_family_properties.size()) {
+        throw std::runtime_error( "Could not find a queue for graphics or presentation -> terminating" );
+    }
 
     float queue_priority = 0.0;
-    
+
     // can only create small number of queues for each family but can have multiple command buffers and submit them all to the same queue
     vk::DeviceQueueCreateInfo queue_create_info {
-         .queueFamilyIndex = graphicsIndex,
+         .queueFamilyIndex = graphics_index,
          .queueCount = 1,
          .pQueuePriorities = &queue_priority // can be a number between 0 and 1, influences command buffer execution scheduling
     };
@@ -95,7 +131,8 @@ void ModernRenderTriangle::createLogicalDevice() {
     m_logical_device = std::make_unique<vk::raii::Device>(*m_physical_device, device_create_info);
 
     // get graphics queue handle
-    m_graphics_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, graphicsIndex, 0);
+    m_graphics_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, graphics_index, 0);
+    m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, present_index, 0);
 }
 
 void ModernRenderTriangle::setupDebugMessenger() {
@@ -141,7 +178,7 @@ std::vector<char const*> ModernRenderTriangle::getRequiredLayers() {
 std::vector<char const*> ModernRenderTriangle::getRequiredExtensions() {
     // get GLFW extensions
     uint32_t glfw_extension_count = 0;
-    auto     glfw_extensions      = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    auto     glfw_extensions      = glfwGetRequiredInstanceExtensions(&glfw_extension_count); // this will get platform-specific windowing extensions for us
 
     // check if extensions are supported by Vulkan
     auto extension_properties = m_context.enumerateInstanceExtensionProperties();

@@ -74,6 +74,11 @@ class ModernRenderTriangle {
     std::vector<char const*> getRequiredExtensions();
 
     /**
+     * @brief create surface to render to
+     */
+    void createSurface();
+
+    /**
      * @brief select a physical device/GPU to use
      */
     void pickPhysicalDevice();
@@ -114,8 +119,9 @@ class ModernRenderTriangle {
     const std::vector<const char*>   m_validation_layers = { "VK_LAYER_KHRONOS_validation" };
 
     // windowing
-    const std::pair<uint32_t, uint32_t> m_window_size = { 800, 800 };
-    GLFWwindow*                         m_window;  // GLFW window to render to
+    const std::pair<uint32_t, uint32_t>   m_window_size = { 800, 800 };
+    GLFWwindow*                           m_window;  // GLFW window to render to
+    std::unique_ptr<vk::raii::SurfaceKHR> m_surface;  ///< surface to render to
 
     // device
     std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device
@@ -125,4 +131,5 @@ class ModernRenderTriangle {
 
     // queues
     std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing
+    std::unique_ptr<vk::raii::Queue> m_presentation_queue; ///< queue for presenting (likely same as graphics queue)
 };

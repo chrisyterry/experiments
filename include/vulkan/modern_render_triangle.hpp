@@ -79,6 +79,11 @@ class ModernRenderTriangle {
     void pickPhysicalDevice();
 
     /**
+     * @brief create a logical device for the selected physical device
+     */
+    void createLogicalDevice();
+
+    /**
      * @brief debug callback
      */
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData, void*) {
@@ -98,19 +103,26 @@ class ModernRenderTriangle {
     void mainLoop();
 
     /**
-     * @brief cleansup vulkan and its dependencies
+     * @brief cleanup vulkan and its dependencies
      */
     void cleanup();
 
-    std::unique_ptr<PhysicalDeviceSelector> m_device_selector;  ///< supporting class for selecting physical device
+    // instance
+    vk::raii::Context                m_context;  ///< vulkan context
+    vk::raii::Instance               m_instance          = nullptr;  ///< vulkan instance
+    vk::raii::DebugUtilsMessengerEXT m_debug_messenger   = nullptr;  ///< can have multiple of these
+    const std::vector<const char*>   m_validation_layers = { "VK_LAYER_KHRONOS_validation" };
 
-    vk::raii::Context                         m_context;  ///< vulkan context
-    vk::raii::Instance                        m_instance        = nullptr;  ///< vulkan instance
-    vk::raii::DebugUtilsMessengerEXT          m_debug_messenger = nullptr;  ///< can have multiple of these
-    std::unique_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< graphics card
-
+    // windowing
     const std::pair<uint32_t, uint32_t> m_window_size = { 800, 800 };
     GLFWwindow*                         m_window;  // GLFW window to render to
 
-    const std::vector<const char*> m_validation_layers = { "VK_LAYER_KHRONOS_validation" };
+    // device
+    std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device
+    std::unique_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< physical device
+    std::unique_ptr<vk::raii::Device>         m_logical_device;  ///< logical device
+    std::vector<const char*>                  m_required_device_extensions;  ///< required device extensions
+
+    // queues
+    std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing
 };

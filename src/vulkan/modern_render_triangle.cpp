@@ -4,14 +4,15 @@
 #include <cassert>
 
 ModernRenderTriangle::ModernRenderTriangle() {
-    m_required_device_extensions = {
+    std::vector<const char*> required_device_extensions = {
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
         vk::KHRSynchronization2ExtensionName,
         vk::KHRCreateRenderpass2ExtensionName
     };
 
-    m_device_selector = std::make_unique<PhysicalDeviceSelector>(m_required_device_extensions);
+    m_device_selector        = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
+    m_logical_device_factory = std::make_unique<LogicalDeviceFactory>(required_device_extensions);
 }
 
 void ModernRenderTriangle::initWindow() {
@@ -43,12 +44,12 @@ void ModernRenderTriangle::createSurface() {
 void ModernRenderTriangle::pickPhysicalDevice() {
     auto devices = m_instance.enumeratePhysicalDevices();
 
-    std::multimap<uint32_t, std::unique_ptr<vk::raii::PhysicalDevice>> candidate_devices;
+    std::multimap<uint32_t, std::shared_ptr<vk::raii::PhysicalDevice>> candidate_devices;
 
     for (const auto& device : devices) {
         std::optional<uint32_t> weight = m_device_selector->scoreDevice(device);
         if (weight.has_value()) {
-            candidate_devices.emplace(weight.value(), std::make_unique<vk::raii::PhysicalDevice>(device));
+            candidate_devices.emplace(weight.value(), std::make_shared<vk::raii::PhysicalDevice>(device));
         }
     }
 
@@ -62,77 +63,19 @@ void ModernRenderTriangle::pickPhysicalDevice() {
 }
 
 void ModernRenderTriangle::createLogicalDevice() {
-    std::vector<vk::QueueFamilyProperties> queue_family_properties = m_physical_device->getQueueFamilyProperties();
+    
+    // attempt to create the logical device
+    LogicalDevice logical_device = m_logical_device_factory->createLogicalDevice({QueueType::GRAPHICS, QueueType::PRESENTATION}, m_physical_device, m_surface);
 
-    // get the first index into queueFamilyProperties which supports graphics
-    auto graphics_queue_property = std::ranges::find_if(queue_family_properties, [](auto const& qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
-    assert(graphics_queue_property != queue_family_properties.end() && "No graphics queue family found!");
-    auto graphics_index = static_cast<uint32_t>(std::distance(queue_family_properties.begin(), graphics_queue_property));
-
-    // check if the graphics queue supports presentation
-    auto present_index  = m_physical_device->getSurfaceSupportKHR(graphics_index, *m_surface) ? graphics_index : static_cast<uint32_t>(queue_family_properties.size());
-
-    // if the graphics queue we found does not support presentation
-    if (present_index == queue_family_properties.size()) {
-        for (size_t i = 0; i < queue_family_properties.size(); ++i) {
-            if ((queue_family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
-                m_physical_device->getSurfaceSupportKHR(static_cast<uint32_t>(i), *m_surface)) {
-                graphics_index = static_cast<uint32_t>(i);
-                present_index  = graphics_index;
-            }
-        }
+    if (!logical_device.device) {
+        throw std::runtime_error( "Could not find a queue for graphics or presentation" );
     }
+    // take ownership of the created logical device
+    m_logical_device = std::move(logical_device.device);
 
-    // if we can't find a queue that does graphics and presentation
-    if (present_index == queue_family_properties.size()) {
-        for (size_t i = 0; i < queue_family_properties.size(); ++i) {
-            if (m_physical_device->getSurfaceSupportKHR(static_cast<uint32_t>(i), *m_surface)) {
-                present_index = static_cast<uint32_t>(i);
-                break;
-            }
-        }
-    }
-
-    if (graphics_index == queue_family_properties.size() || present_index == queue_family_properties.size()) {
-        throw std::runtime_error( "Could not find a queue for graphics or presentation -> terminating" );
-    }
-
-    float queue_priority = 0.0;
-
-    // can only create small number of queues for each family but can have multiple command buffers and submit them all to the same queue
-    vk::DeviceQueueCreateInfo queue_create_info {
-         .queueFamilyIndex = graphics_index,
-         .queueCount = 1,
-         .pQueuePriorities = &queue_priority // can be a number between 0 and 1, influences command buffer execution scheduling
-    };
-
-    // to enable multiple features have to link structure elements together with pNext; 
-    // structure chain does this for you
-    // Each template argument is a structure in the chain
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, 
-                       vk::PhysicalDeviceVulkan13Features, // if we needed something added in other versions of vulkan, add the structs for those versions to the chains
-                       vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
-    feature_chain = {
-        {}, // empty struct
-        {.dynamicRendering = true}, // feature was added in vulkan 1.3 so we have to use the vulkan 1.3 struct to set it
-        {.extendedDynamicState = true}
-    };
-
-    // can only create small number of queues for each family but can have multiple command buffers and submit them all to the same queue
-    vk::DeviceCreateInfo device_create_info {
-         .pNext = &feature_chain.get<vk::PhysicalDeviceFeatures2>(), // should be same type as first element of structure chain
-         .queueCreateInfoCount = 1,
-         .pQueueCreateInfos = &queue_create_info,
-         .enabledExtensionCount = static_cast<uint32_t>(m_required_device_extensions.size()),
-         .ppEnabledExtensionNames = m_required_device_extensions.data()
-    };
-
-    // create the logical device
-    m_logical_device = std::make_unique<vk::raii::Device>(*m_physical_device, device_create_info);
-
-    // get graphics queue handle
-    m_graphics_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, graphics_index, 0);
-    m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, present_index, 0);
+    // get handles for the required queues
+    m_graphics_queue     = std::make_unique<vk::raii::Queue>(*m_logical_device, logical_device.queue_indexes.at(QueueType::GRAPHICS), 0);
+    m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, logical_device.queue_indexes.at(QueueType::PRESENTATION), 0);
 }
 
 void ModernRenderTriangle::setupDebugMessenger() {
@@ -241,17 +184,4 @@ void ModernRenderTriangle::run() {
     initVulkan();
     mainLoop();
     cleanup();
-}
-
-int main() {
-    ModernRenderTriangle renderer;
-
-    try { 
-        renderer.run();
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
 }

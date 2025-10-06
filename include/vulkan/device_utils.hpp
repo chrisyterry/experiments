@@ -1,20 +1,27 @@
 #pragma once
 
 // Vulkan
-#ifdef __INTELLISENSE__
+//#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_platform.h>
+//#else
+//import vulkan_hpp; // using the vulkan module gives super weird redefinition errors for thing sfor the stl; probably have to use import std; or wrap the includes/this stuff in a module
+//#endif
+
 #include <unordered_set>
+#include <unordered_map>
 #include <optional>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 // This is required for the version header apparently
-#include <vulkan/vulkan_core.h>
+//#include <vulkan/vulkan_core.h>
+
+enum class QueueType : uint8_t {
+  GRAPHICS = 0,
+  PRESENTATION,
+  NUM_ENTRIES
+};
 
 /**
  * @brief selects physical devices for rendering
@@ -81,7 +88,7 @@ class PhysicalDeviceSelector {
         virtual std::optional<uint32_t> getScore(const vk::raii::PhysicalDevice device);
 
       private:
-        std::vector<const char*> m_required_extensions;  // required extensions for phsyical devices
+        std::vector<const char*> m_required_extensions;  // required extensions for physical devices
     };
 
     class PropertiesCriteria : public SelectionCriteria {
@@ -103,4 +110,50 @@ class PhysicalDeviceSelector {
     };
 
     std::vector<std::unique_ptr<SelectionCriteria>> m_selection_criteria; ///< criteria for selecting a physical device
+};
+
+struct LogicalDevice {
+  std::unique_ptr<vk::raii::Device> device = nullptr; ///< the logical device
+  std::unordered_map<QueueType, uint32_t> queue_indexes; ///< indexes for the requested queues
+};
+
+/**
+ * @brief creates a logical device with the specified settings
+ */
+class LogicalDeviceFactory {
+  public:
+
+    /**
+     * @brief constructor for logical device factory
+     * 
+     * @param required_extensions extensions required
+     */
+    LogicalDeviceFactory(const std::vector<const char*>& required_extensions);
+
+    /**
+     * @brief create a logical device for the specified physical device and surface
+     *
+     * @param required_queues physical device queues required
+     * @param device the physical device to use
+     * @param surface the surface to be rendered to (if required)
+     *
+     * @return struct containing the logical device and the indexes of the queues specified
+     */
+    LogicalDevice createLogicalDevice(std::unordered_set<QueueType>             required_queues,
+                                      std::shared_ptr<vk::raii::PhysicalDevice> device,
+                                      std::shared_ptr<vk::raii::SurfaceKHR>     surface = nullptr);
+
+  private:
+    /**
+     * @brief get the requested queue indexes that were found for the specified physical device
+     *
+     * @param physical_device the physical device to use
+     * @param surface the surface to be rendered to (if required)
+     *
+     * @return unordered map containing the queue type and associated index for the device
+     */
+    std::unordered_map<QueueType, std::uint32_t> getQueueIndexes(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
+                                                                 std::shared_ptr<vk::raii::SurfaceKHR>     surface);
+
+    std::vector<const char*> m_required_device_extensions;  ///< required device extensions
 };

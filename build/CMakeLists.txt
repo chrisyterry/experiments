@@ -52,13 +52,21 @@ target_link_libraries(device_selection
 )
 
 # Renderer
-add_executable(nu_triangle ../src/vulkan/modern_render_triangle.cpp)
-target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-target_link_libraries(nu_triangle
+add_library(renderer STATIC
+    ${CMAKE_SOURCE_DIR}/../src/vulkan/modern_render_triangle.cpp
+)
+target_include_directories(renderer PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(renderer
     Vulkan::cppm
     glfw
     device_selection
 )
+add_executable(nu_triangle ../src/vulkan/main.cpp)
+target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(nu_triangle
+    renderer
+)
+
 #[[
 
 ## Original ##

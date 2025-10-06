@@ -2,19 +2,17 @@
 
 // Standard library
 #include <stdexcept>
-#include <cstdlib>
 #include <algorithm>
 #include <memory>
 #include <iostream>
 #include <vector>
 
 // Vulkan
-#ifdef __INTELLISENSE__
+//#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
-#include <vulkan/vk_platform.h>
+//#else
+//import vulkan_hpp;
+//#endif
 
 // GLFW
 #define GLFW_INCLUDE_VULKAN
@@ -121,13 +119,13 @@ class ModernRenderTriangle {
     // windowing
     const std::pair<uint32_t, uint32_t>   m_window_size = { 800, 800 };
     GLFWwindow*                           m_window;  // GLFW window to render to
-    std::unique_ptr<vk::raii::SurfaceKHR> m_surface;  ///< surface to render to
+    std::shared_ptr<vk::raii::SurfaceKHR> m_surface;  ///< surface to render to
 
     // device
     std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device
-    std::unique_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< physical device
+    std::shared_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< physical device
+    std::unique_ptr<LogicalDeviceFactory>     m_logical_device_factory;  ///< factory for creating logical devices
     std::unique_ptr<vk::raii::Device>         m_logical_device;  ///< logical device
-    std::vector<const char*>                  m_required_device_extensions;  ///< required device extensions
 
     // queues
     std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing

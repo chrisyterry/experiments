@@ -49,6 +49,7 @@ add_library(device_selection STATIC
 target_include_directories(device_selection PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(device_selection
     Vulkan::cppm
+    glfw
 )
 
 # Renderer

@@ -7,6 +7,10 @@
 //import vulkan_hpp; // using the vulkan module gives super weird redefinition errors for thing sfor the stl; probably have to use import std; or wrap the includes/this stuff in a module
 //#endif
 
+// GLFW
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 #include <unordered_set>
 #include <unordered_map>
 #include <optional>
@@ -21,6 +25,14 @@ enum class QueueType : uint8_t {
   GRAPHICS = 0,
   PRESENTATION,
   NUM_ENTRIES
+};
+
+struct DestroyGLFWWindow {
+  void operator()(GLFWwindow* ptr) {
+    if (ptr) {
+      glfwDestroyWindow(ptr);
+    }
+  }
 };
 
 /**
@@ -113,8 +125,8 @@ class PhysicalDeviceSelector {
 };
 
 struct LogicalDevice {
-  std::unique_ptr<vk::raii::Device> device = nullptr; ///< the logical device
-  std::unordered_map<QueueType, uint32_t> queue_indexes; ///< indexes for the requested queues
+    std::shared_ptr<vk::raii::Device>       device = nullptr;  ///< the logical device
+    std::unordered_map<QueueType, uint32_t> queue_indexes;  ///< indexes for the requested queues
 };
 
 /**
@@ -139,9 +151,9 @@ class LogicalDeviceFactory {
      *
      * @return struct containing the logical device and the indexes of the queues specified
      */
-    LogicalDevice createLogicalDevice(std::unordered_set<QueueType>             required_queues,
-                                      std::shared_ptr<vk::raii::PhysicalDevice> device,
-                                      std::shared_ptr<vk::raii::SurfaceKHR>     surface = nullptr);
+    std::shared_ptr<LogicalDevice> createLogicalDevice(std::unordered_set<QueueType>             required_queues,
+                                                       std::shared_ptr<vk::raii::PhysicalDevice> device,
+                                                       std::shared_ptr<vk::raii::SurfaceKHR>     surface = nullptr);
 
   private:
     /**
@@ -154,6 +166,78 @@ class LogicalDeviceFactory {
      */
     std::unordered_map<QueueType, std::uint32_t> getQueueIndexes(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
                                                                  std::shared_ptr<vk::raii::SurfaceKHR>     surface);
-
     std::vector<const char*> m_required_device_extensions;  ///< required device extensions
+};
+
+/**
+ * @brief struct to hold swaphchain and associated data
+ */
+struct SwapChain {
+    std::shared_ptr<vk::raii::SwapchainKHR> swapchain;  ///< the swapchain
+    std::shared_ptr<std::vector<vk::Image>> swapchain_images;  ///< images in the swapchain
+    vk::SurfaceFormatKHR                    surface_format;  ///< format of surface associated with swapchain
+    vk::Extent2D                            surface_extent;  ///< extent of swapchain surface
+};
+
+/**
+ * @brief class for creating swapchains
+ */
+class SwapChainFactory {
+  public:
+    /**
+     * @brief swapchain factory constructor
+     */
+    SwapChainFactory(){};
+
+    /**
+     * @brief create a swapchain with the specified settings
+     *
+     * @param physical_device the physical device to use
+     * @param logical_device the logical device to use
+     * @param surface the surface to render to
+     * @param window the window to be rendered to
+     *
+     * @return the swapchain and associated data
+     */
+    std::shared_ptr<SwapChain> createSwapchain(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
+                                               std::shared_ptr<LogicalDevice>            logical_device,
+                                               std::shared_ptr<vk::raii::SurfaceKHR>     surface,
+                                               std::shared_ptr<GLFWwindow>               window);
+  private:
+    /**
+     * @brief choose the minimum image count for the swapchain
+     * 
+     * @param surface_capabilites the capabilites for the surface to be rendered to
+     * 
+     * @return the minimum number of images in the swapchain
+     */
+    uint32_t chooseMinImageCount(const vk::SurfaceCapabilitiesKHR& surface_capabilites);
+
+    /**
+     * @brief select a swapchain surface format from the provided list
+     *
+     * @param formats a list of available swapchain surface formats
+     *
+     * @return the selected swapchain surface format
+     */
+    vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats);
+
+    /**
+     * @brief select a swapchain presentation mode from the provided list
+     *
+     * @param modes list of available swapchain presentation modes
+     *
+     * @return the selected presentation mode
+     */
+    vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& modes);
+
+    /**
+     * @brief select a swapchain extent
+     *
+     * @param capabilities struct of surface capabilities
+     * @param window the window the swapchain will render to
+     *
+     * @return exten of surface
+     */
+    vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, std::shared_ptr<GLFWwindow> window);
 };

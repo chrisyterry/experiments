@@ -13,6 +13,7 @@ ModernRenderTriangle::ModernRenderTriangle() {
 
     m_device_selector        = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
     m_logical_device_factory = std::make_unique<LogicalDeviceFactory>(required_device_extensions);
+    m_swapchain_factory      = std::make_unique<SwapChainFactory>();
 }
 
 void ModernRenderTriangle::initWindow() {
@@ -22,7 +23,8 @@ void ModernRenderTriangle::initWindow() {
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     // create the GLFW window (fourth param is monitor to open window on, last is openGL only)
-    m_window = glfwCreateWindow(m_window_size.first, m_window_size.second, "vulkan", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(m_window_size.first, m_window_size.second, "vulkan", nullptr, nullptr);
+    m_window           = std::shared_ptr<GLFWwindow>(window, DestroyGLFWWindow{});
 }
 
 void ModernRenderTriangle::initVulkan() {
@@ -31,11 +33,12 @@ void ModernRenderTriangle::initVulkan() {
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    createSwapchain();
 }
 
 void ModernRenderTriangle::createSurface() {
     VkSurfaceKHR surface; // from C API
-    if (glfwCreateWindowSurface(*m_instance, m_window, nullptr, &surface) != 0) {
+    if (glfwCreateWindowSurface(*m_instance, m_window.get(), nullptr, &surface) != 0) {
         throw std::runtime_error("failed to create window surface!");
     }
     m_surface = std::make_unique<vk::raii::SurfaceKHR>(m_instance, surface);
@@ -65,17 +68,19 @@ void ModernRenderTriangle::pickPhysicalDevice() {
 void ModernRenderTriangle::createLogicalDevice() {
     
     // attempt to create the logical device
-    LogicalDevice logical_device = m_logical_device_factory->createLogicalDevice({QueueType::GRAPHICS, QueueType::PRESENTATION}, m_physical_device, m_surface);
+    m_logical_device = m_logical_device_factory->createLogicalDevice({QueueType::GRAPHICS, QueueType::PRESENTATION}, m_physical_device, m_surface);
 
-    if (!logical_device.device) {
+    if (!m_logical_device->device) {
         throw std::runtime_error( "Could not find a queue for graphics or presentation" );
     }
-    // take ownership of the created logical device
-    m_logical_device = std::move(logical_device.device);
 
     // get handles for the required queues
-    m_graphics_queue     = std::make_unique<vk::raii::Queue>(*m_logical_device, logical_device.queue_indexes.at(QueueType::GRAPHICS), 0);
-    m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device, logical_device.queue_indexes.at(QueueType::PRESENTATION), 0);
+    m_graphics_queue     = std::make_unique<vk::raii::Queue>(*m_logical_device->device, m_logical_device->queue_indexes.at(QueueType::GRAPHICS), 0);
+    m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device->device, m_logical_device->queue_indexes.at(QueueType::PRESENTATION), 0);
+}
+
+void ModernRenderTriangle::createSwapchain () {
+    ModernRenderTriangle::m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window);
 }
 
 void ModernRenderTriangle::setupDebugMessenger() {
@@ -168,14 +173,13 @@ void ModernRenderTriangle::createInstance() {
 }
 
 void ModernRenderTriangle::mainLoop() {
-    while (!glfwWindowShouldClose(m_window)) {
+    while (!glfwWindowShouldClose(m_window.get())) {
         glfwPollEvents();
     }
 }
 
 void ModernRenderTriangle::cleanup() {
     // cleanup glfw
-    glfwDestroyWindow(m_window);
     glfwTerminate();
 }
 

@@ -87,6 +87,11 @@ class ModernRenderTriangle {
     void createLogicalDevice();
 
     /**
+     * @brief create a swapchain for showing images to the screen
+     */
+    void createSwapchain();
+
+    /**
      * @brief debug callback
      */
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData, void*) {
@@ -118,14 +123,18 @@ class ModernRenderTriangle {
 
     // windowing
     const std::pair<uint32_t, uint32_t>   m_window_size = { 800, 800 };
-    GLFWwindow*                           m_window;  // GLFW window to render to
+    std::shared_ptr<GLFWwindow>           m_window;  // GLFW window to render to
     std::shared_ptr<vk::raii::SurfaceKHR> m_surface;  ///< surface to render to
+
+    // presentation
+    std::unique_ptr<SwapChainFactory> m_swapchain_factory;  ///< factory for creating swapchains
+    std::shared_ptr<SwapChain>        m_swapchain;  ///< swapchain for image presentation
 
     // device
     std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device
     std::shared_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< physical device
     std::unique_ptr<LogicalDeviceFactory>     m_logical_device_factory;  ///< factory for creating logical devices
-    std::unique_ptr<vk::raii::Device>         m_logical_device;  ///< logical device
+    std::shared_ptr<LogicalDevice>            m_logical_device;  ///< logical device
 
     // queues
     std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing

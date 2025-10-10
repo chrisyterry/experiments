@@ -1,7 +1,8 @@
 #include "vulkan/device_utils.hpp"
-#include "algorithm"
+#include <algorithm>
 #include <iostream>
 #include <cassert>
+#include <limits>
 
 PhysicalDeviceSelector::PhysicalDeviceSelector(const std::vector<const char*>& required_extensions) {
     
@@ -94,16 +95,16 @@ LogicalDeviceFactory::LogicalDeviceFactory(const std::vector<const char*>& requi
     m_required_device_extensions = required_extensions;
 }
 
-LogicalDevice LogicalDeviceFactory::createLogicalDevice(std::unordered_set<QueueType>             required_queues,
-                                                        std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
-                                                        std::shared_ptr<vk::raii::SurfaceKHR>     surface) {
+std::shared_ptr<LogicalDevice> LogicalDeviceFactory::createLogicalDevice(std::unordered_set<QueueType>             required_queues,
+                                                                         std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
+                                                                         std::shared_ptr<vk::raii::SurfaceKHR>     surface) {
 
-    LogicalDevice logical_device;
+    std::shared_ptr<LogicalDevice> logical_device = std::make_shared<LogicalDevice>();
 
     // get the required queue indexes
-    logical_device.queue_indexes = getQueueIndexes(physical_device, surface);
+    logical_device->queue_indexes = getQueueIndexes(physical_device, surface);
     for (const auto& queue : required_queues) {
-        if (logical_device.queue_indexes.count(queue) < 1) {
+        if (logical_device->queue_indexes.count(queue) < 1) {
             return logical_device;
         }
     }
@@ -112,9 +113,9 @@ LogicalDevice LogicalDeviceFactory::createLogicalDevice(std::unordered_set<Queue
 
     // can only create small number of queues for each family but can have multiple command buffers and submit them all to the same queue
     vk::DeviceQueueCreateInfo queue_create_info{
-        .queueFamilyIndex = logical_device.queue_indexes.at(QueueType::GRAPHICS),
+        .queueFamilyIndex = logical_device->queue_indexes.at(QueueType::GRAPHICS),
         .queueCount       = 1,
-        .pQueuePriorities = &queue_priority // can be a number between 0 and 1, influences command buffer execution scheduling
+        .pQueuePriorities = &queue_priority  // can be a number between 0 and 1, influences command buffer execution scheduling
     };
 
     // to enable multiple features have to link structure elements together with pNext;
@@ -139,7 +140,7 @@ LogicalDevice LogicalDeviceFactory::createLogicalDevice(std::unordered_set<Queue
     };
 
     // create the logical device
-    logical_device.device = std::make_unique<vk::raii::Device>(*physical_device, device_create_info);
+    logical_device->device = std::make_shared<vk::raii::Device>(*physical_device, device_create_info);
 
     return std::move(logical_device);
 }
@@ -191,4 +192,112 @@ std::unordered_map<QueueType, uint32_t> LogicalDeviceFactory::getQueueIndexes(st
     }
 
     return queue_indexes;
+}
+
+std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
+                                                             std::shared_ptr<LogicalDevice>            logical_device,
+                                                             std::shared_ptr<vk::raii::SurfaceKHR>     surface,
+                                                             std::shared_ptr<GLFWwindow>               window) {
+
+    std::shared_ptr<SwapChain> swapchain = std::make_shared<SwapChain>();
+
+    // get surface capabilites of swapchain
+    std::vector<vk::SurfaceFormatKHR> surface_formats     = physical_device->getSurfaceFormatsKHR(*surface);
+    swapchain->surface_format                             = chooseSwapSurfaceFormat(surface_formats);
+    vk::SurfaceCapabilitiesKHR surface_capabilites        = physical_device->getSurfaceCapabilitiesKHR(*surface);
+    swapchain->surface_extent                             = chooseSwapExtent(surface_capabilites, window);
+    std::vector<vk::PresentModeKHR> surface_present_modes = physical_device->getSurfacePresentModesKHR(*surface);
+    vk::PresentModeKHR              present_mode          = chooseSwapPresentMode(surface_present_modes);
+
+    vk::SwapchainCreateInfoKHR swapchain_create_info{
+        .flags            = vk::SwapchainCreateFlagsKHR(),
+        .surface          = *surface,
+        .minImageCount    = chooseMinImageCount(surface_capabilites),
+        .imageFormat      = swapchain->surface_format.format,
+        .imageColorSpace  = swapchain->surface_format.colorSpace,
+        .imageExtent      = swapchain->surface_extent,
+        .imageArrayLayers = 1,  // more than 1 for stereoscopic 3D
+        .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,  // operations we will use image for; color attachment means directly rendering to them; can render to image for post processing and use VK_IMAGE_USAGE_TRANSFER_DST_BIT then do memory transfer to a swapchain
+        .imageSharingMode = vk::SharingMode::eExclusive,
+        .preTransform     = surface_capabilites.currentTransform,  // e.g. 90 deg clockwise or mirroring
+        .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,  // whether to use alpha for blending with other system windows
+        .presentMode      = present_mode,
+        .clipped          = vk::True,  // don't care about color of pixels that are obscured by other windows (best performance)
+        .oldSwapchain     = nullptr
+    };
+
+    // handling images across multiple queue families
+    uint32_t queue_family_indexes[] = {logical_device->queue_indexes.at(QueueType::GRAPHICS), logical_device->queue_indexes.at(QueueType::PRESENTATION)};
+    if (logical_device->queue_indexes.at(QueueType::GRAPHICS) != logical_device->queue_indexes.at(QueueType::PRESENTATION)) {
+        swapchain_create_info.imageSharingMode      = vk::SharingMode::eConcurrent;// images can be used across multiple queues without explicit transfer of ownership
+        swapchain_create_info.queueFamilyIndexCount = 2;
+        swapchain_create_info.pQueueFamilyIndices   = queue_family_indexes; // which queue families will be able to share the images
+    } else {
+        swapchain_create_info.imageSharingMode      = vk::SharingMode::eExclusive; // explicit image ownership transfer between queues (best performance); do this if present and graphics the same queue
+        swapchain_create_info.queueFamilyIndexCount = 0;  // optional
+        swapchain_create_info.pQueueFamilyIndices   = nullptr;
+    }
+
+    swapchain->swapchain        = std::make_shared<vk::raii::SwapchainKHR>(*logical_device->device, swapchain_create_info);
+    swapchain->swapchain_images = std::make_shared<std::vector<vk::Image>>(swapchain->swapchain->getImages());
+
+    return swapchain;
+}
+
+uint32_t SwapChainFactory::chooseMinImageCount(const vk::SurfaceCapabilitiesKHR& surface_capabilites) {
+    uint32_t min_image_count = std::max(3u, surface_capabilites.minImageCount);
+    min_image_count          = (surface_capabilites.maxImageCount > 0 && min_image_count > surface_capabilites.maxImageCount) ? surface_capabilites.maxImageCount : min_image_count;
+    min_image_count += 1;  // if if we have the absolute minimum have to wait for driver to complete internal operations before acquiring the next image to render to
+    // zero indicates no max image count
+    if (surface_capabilites.maxImageCount > 0 && min_image_count > surface_capabilites.maxImageCount) {
+        min_image_count = surface_capabilites.maxImageCount;
+    }
+
+    return min_image_count;
+}
+
+vk::SurfaceFormatKHR SwapChainFactory::chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats) {
+    // SurfaceFormatKHR contains a format and color, e.g. VK_FORMAT_B8G8R8A8_SRGB is 8 bit RGBA using SRGB format
+
+    for (const auto& format : formats) {
+        if (format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+            return format;
+        }
+    }
+
+    return formats.front();
+}
+
+vk::PresentModeKHR SwapChainFactory::chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& modes) {
+    // present mode specifieds condition for showing image to screen; 4 modes available:
+    // 1) VK_PRESENT_MODE_IMMEDIATE_KHR - images immediately shown on screen (causes tearing)
+    // 2) VK_PRESENT_MODE_FIFO_KHR - swapchain is FIFO queue, display takes image from front of queue when refreshed ( the moment of refresh is known as "vertical blank");
+    //                             - program inserts images at the back of the queue
+    //                             - if queue is full program waits, similar to VSYNC
+    //                             - guaranteed to be available
+    // 3) VK_PRESENT_MODE_FIFO_RELAXED_KHR - as above but if queue is empty new image gets transferred right away (causes tearing)
+    // 4) VK_PRESENT_MODE_MAILBOX_KHR - as 2) but if queue is full last image is replaced; "triple buffering"
+
+    for (const auto& mode : modes) {
+        if (mode == vk::PresentModeKHR::eMailbox) {
+            return mode;
+        }
+    }
+
+    return vk::PresentModeKHR::eFifo;
+}   
+
+vk::Extent2D SwapChainFactory::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, std::shared_ptr<GLFWwindow> window) {
+    // for some window managers let us have different res to the window, set height and width to uint32_t max but have to specify units correctly
+    // screen coordinates don't always correspond to pixels (typically for high res displays)
+
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+    }
+    int width, height;
+    glfwGetFramebufferSize(window.get(), &width, &height);
+    width  = std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    height = std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+    return {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
 }

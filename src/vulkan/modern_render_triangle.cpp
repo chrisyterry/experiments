@@ -16,6 +16,11 @@ ModernRenderTriangle::ModernRenderTriangle() {
     m_swapchain_factory      = std::make_unique<SwapChainFactory>();
 }
 
+ModernRenderTriangle::~ModernRenderTriangle() {
+    cleanup();
+}
+
+
 void ModernRenderTriangle::initWindow() {
     // initialize GLFW without openGL stuff
     glfwInit();
@@ -179,6 +184,8 @@ void ModernRenderTriangle::mainLoop() {
 }
 
 void ModernRenderTriangle::cleanup() {
+    // cleanup swapchain  before cleanup of devices
+    m_swapchain->~SwapChain();
     // cleanup glfw
     glfwTerminate();
 }

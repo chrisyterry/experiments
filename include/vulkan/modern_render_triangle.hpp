@@ -37,6 +37,11 @@ class ModernRenderTriangle {
     ModernRenderTriangle();
 
     /**
+     * @brief destructor for renderer
+     */
+    ~ModernRenderTriangle();
+
+    /**
      * @brief run the render triangle application
      */
     void run();

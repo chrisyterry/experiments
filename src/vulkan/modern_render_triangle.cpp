@@ -184,7 +184,7 @@ void ModernRenderTriangle::mainLoop() {
 }
 
 void ModernRenderTriangle::cleanup() {
-    // cleanup swapchain  before cleanup of devices
+    // cleanup swapchain before cleanup of devices
     m_swapchain->~SwapChain();
     // cleanup glfw
     glfwTerminate();

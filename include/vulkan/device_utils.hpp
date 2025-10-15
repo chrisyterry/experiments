@@ -173,10 +173,11 @@ class LogicalDeviceFactory {
  * @brief struct to hold swaphchain and associated data
  */
 struct SwapChain {
-    std::shared_ptr<vk::raii::SwapchainKHR> swapchain;  ///< the swapchain
-    std::shared_ptr<std::vector<vk::Image>> swapchain_images;  ///< images in the swapchain
-    vk::SurfaceFormatKHR                    surface_format;  ///< format of surface associated with swapchain
-    vk::Extent2D                            surface_extent;  ///< extent of swapchain surface
+    std::shared_ptr<vk::raii::SwapchainKHR>           swapchain;  ///< the swapchain
+    std::shared_ptr<std::vector<vk::Image>>           images;  ///< images in the swapchain
+    std::shared_ptr<std::vector<vk::raii::ImageView>> image_views;  ///< image views for the images in the swapchain
+    vk::Format                                        format = vk::Format::eUndefined;  ///< format of swapchain images
+    vk::Extent2D                                      extent;  ///< extent of swapchain surface
 };
 
 /**
@@ -205,10 +206,19 @@ class SwapChainFactory {
                                                std::shared_ptr<GLFWwindow>               window);
   private:
     /**
+     * @brief create image views for the images in the swapchain
+     *
+     * @param logical_device logical device use for image view creation
+     * @param swapchain pointer to the swapchain to update with image views
+     */
+    void createImageViews(std::shared_ptr<LogicalDevice> logical_device,
+                          std::shared_ptr<SwapChain>     swapchain);
+
+    /**
      * @brief choose the minimum image count for the swapchain
-     * 
+     *
      * @param surface_capabilites the capabilites for the surface to be rendered to
-     * 
+     *
      * @return the minimum number of images in the swapchain
      */
     uint32_t chooseMinImageCount(const vk::SurfaceCapabilitiesKHR& surface_capabilites);

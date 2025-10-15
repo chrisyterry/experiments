@@ -202,10 +202,12 @@ std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk:
     std::shared_ptr<SwapChain> swapchain = std::make_shared<SwapChain>();
 
     // get surface capabilites of swapchain
-    std::vector<vk::SurfaceFormatKHR> surface_formats     = physical_device->getSurfaceFormatsKHR(*surface);
-    swapchain->surface_format                             = chooseSwapSurfaceFormat(surface_formats);
+    std::vector<vk::SurfaceFormatKHR> surface_formats = physical_device->getSurfaceFormatsKHR(*surface);
+    vk::SurfaceFormatKHR              surface_format  = chooseSwapSurfaceFormat(surface_formats);
+    swapchain->format                                 = surface_format.format;
+
     vk::SurfaceCapabilitiesKHR surface_capabilites        = physical_device->getSurfaceCapabilitiesKHR(*surface);
-    swapchain->surface_extent                             = chooseSwapExtent(surface_capabilites, window);
+    swapchain->extent                                     = chooseSwapExtent(surface_capabilites, window);
     std::vector<vk::PresentModeKHR> surface_present_modes = physical_device->getSurfacePresentModesKHR(*surface);
     vk::PresentModeKHR              present_mode          = chooseSwapPresentMode(surface_present_modes);
 
@@ -213,9 +215,9 @@ std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk:
         .flags            = vk::SwapchainCreateFlagsKHR(),
         .surface          = *surface,
         .minImageCount    = chooseMinImageCount(surface_capabilites),
-        .imageFormat      = swapchain->surface_format.format,
-        .imageColorSpace  = swapchain->surface_format.colorSpace,
-        .imageExtent      = swapchain->surface_extent,
+        .imageFormat      = swapchain->format,
+        .imageColorSpace  = surface_format.colorSpace,
+        .imageExtent      = swapchain->extent,
         .imageArrayLayers = 1,  // more than 1 for stereoscopic 3D
         .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,  // operations we will use image for; color attachment means directly rendering to them; can render to image for post processing and use VK_IMAGE_USAGE_TRANSFER_DST_BIT then do memory transfer to a swapchain
         .imageSharingMode = vk::SharingMode::eExclusive,
@@ -238,10 +240,38 @@ std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk:
         swapchain_create_info.pQueueFamilyIndices   = nullptr;
     }
 
-    swapchain->swapchain        = std::make_shared<vk::raii::SwapchainKHR>(*logical_device->device, swapchain_create_info);
-    swapchain->swapchain_images = std::make_shared<std::vector<vk::Image>>(swapchain->swapchain->getImages());
+    swapchain->swapchain = std::make_shared<vk::raii::SwapchainKHR>(*logical_device->device, swapchain_create_info);
+    swapchain->images    = std::make_shared<std::vector<vk::Image>>(swapchain->swapchain->getImages());
 
     return swapchain;
+}
+
+void SwapChainFactory::createImageViews(std::shared_ptr<LogicalDevice> logical_device,
+                                        std::shared_ptr<SwapChain>     swapchain) {
+
+    // setup image view vector
+    swapchain->image_views = std::make_shared<std::vector<vk::raii::ImageView>>();
+
+    vk::ImageViewCreateInfo image_view_create_info{ 
+        .viewType = vk::ImageViewType::e2D, 
+        .format = swapchain->format, 
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        } 
+    };
+
+    // for stereographic 3D, create a swapchain with multiple layers, one layer is for each eye
+    // VR typically requires a maximum of 4 images; GPUs can typically handle up to 16 image views
+
+    // create an image view for each swap chain image
+    for (auto image : *swapchain->images) {
+        image_view_create_info.image = image;
+        swapchain->image_views->emplace_back(*(logical_device->device), image_view_create_info);
+    }
 }
 
 uint32_t SwapChainFactory::chooseMinImageCount(const vk::SurfaceCapabilitiesKHR& surface_capabilites) {

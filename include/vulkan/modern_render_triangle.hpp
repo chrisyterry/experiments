@@ -92,7 +92,7 @@ class ModernRenderTriangle {
     void createLogicalDevice();
 
     /**
-     * @brief create a swapchain for showing images to the screen
+     * @brief create a swapchain and supporting structures for showing images to the screen
      */
     void createSwapchain();
 
@@ -134,6 +134,7 @@ class ModernRenderTriangle {
     // presentation
     std::unique_ptr<SwapChainFactory> m_swapchain_factory;  ///< factory for creating swapchains
     std::shared_ptr<SwapChain>        m_swapchain;  ///< swapchain for image presentation
+    std::vector<vk::ImageView>        m_image_views;  ///< image views to be rendered to
 
     // device
     std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device

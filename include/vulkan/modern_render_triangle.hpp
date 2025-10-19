@@ -27,6 +27,7 @@ constexpr bool VALIDATION_LAYERS = false;
 
 // homebrew utilities
 #include "vulkan/device_utils.hpp"
+#include "vulkan/pipeline_utils.hpp"
 
 class ModernRenderTriangle {
   public:
@@ -140,6 +141,10 @@ class ModernRenderTriangle {
     std::unique_ptr<SwapChainFactory> m_swapchain_factory;  ///< factory for creating swapchains
     std::shared_ptr<SwapChain>        m_swapchain;  ///< swapchain for image presentation
     std::vector<vk::ImageView>        m_image_views;  ///< image views to be rendered to
+
+    // rendering
+    std::unique_ptr<GraphicsPipelineFactory> m_graphics_pipeline_factory;  ///< factory for creating graphics pipelines
+    std::unique_ptr<vk::raii::Pipeline>      m_graphics_pipeline;  ///< the graphics pipeline
 
     // device
     std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device

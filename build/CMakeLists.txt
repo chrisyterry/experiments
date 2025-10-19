@@ -62,6 +62,7 @@ add_library(pipeline_creation STATIC
 target_include_directories(pipeline_creation PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(pipeline_creation
     Vulkan::cppm
+    device_selection
 )
 
 # Renderer

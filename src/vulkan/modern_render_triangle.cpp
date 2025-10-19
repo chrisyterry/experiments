@@ -11,9 +11,10 @@ ModernRenderTriangle::ModernRenderTriangle() {
         vk::KHRCreateRenderpass2ExtensionName
     };
 
-    m_device_selector        = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
-    m_logical_device_factory = std::make_unique<LogicalDeviceFactory>(required_device_extensions);
-    m_swapchain_factory      = std::make_unique<SwapChainFactory>();
+    m_device_selector           = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
+    m_logical_device_factory    = std::make_unique<LogicalDeviceFactory>(required_device_extensions);
+    m_swapchain_factory         = std::make_unique<SwapChainFactory>();
+    m_graphics_pipeline_factory = std::make_unique<GraphicsPipelineFactory>();
 }
 
 ModernRenderTriangle::~ModernRenderTriangle() {
@@ -90,7 +91,8 @@ void ModernRenderTriangle::createSwapchain () {
 }
 
 void ModernRenderTriangle::createGraphicsPipeline() {
-    
+    // create the graphics pipeline
+    m_graphics_pipeline = m_graphics_pipeline_factory->createGraphicsPipeline(m_logical_device, m_swapchain);
 }
 
 void ModernRenderTriangle::setupDebugMessenger() {

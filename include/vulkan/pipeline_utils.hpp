@@ -6,6 +6,8 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
+#include <vulkan/device_utils.hpp>
+
 /**
  * @brief factory class for creating graphics pipelines
  */
@@ -15,9 +17,12 @@ class GraphicsPipelineFactory {
         /**
          * @brief create a graphics pipeline
          * 
-         * @param the logical device to create the pipeline for
+         * @param logical_device the logical device to create the pipeline for
+         * @param swapchain the swapchain that will receive the pipeline output
+         * 
+         * @return the graphics pipeline
          */
-        void createGraphicsPipeline(std::shared_ptr<vk::raii::Device> logical_device);
+        std::unique_ptr<vk::raii::Pipeline> createGraphicsPipeline(std::shared_ptr<LogicalDevice> logical_device, std::shared_ptr<SwapChain> swapchain);
     private:
       /**
        * @brief loads a binary file into a byte array
@@ -34,5 +39,5 @@ class GraphicsPipelineFactory {
        * 
        * @return the shader module
        */
-      std::unique_ptr<vk::raii::ShaderModule> createShaderModule(std::shared_ptr<vk::raii::Device> logical_device, const std::vector<char>& byte_code) const;
+      std::unique_ptr<vk::raii::ShaderModule> createShaderModule(std::shared_ptr<LogicalDevice> logical_device, const std::vector<char>& byte_code) const;
 };

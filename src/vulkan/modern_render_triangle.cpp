@@ -39,6 +39,7 @@ void ModernRenderTriangle::initVulkan() {
     pickPhysicalDevice();
     createLogicalDevice();
     createSwapchain();
+    createGraphicsPipeline();
 }
 
 void ModernRenderTriangle::createSurface() {
@@ -88,6 +89,9 @@ void ModernRenderTriangle::createSwapchain () {
     ModernRenderTriangle::m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window);
 }
 
+void ModernRenderTriangle::createGraphicsPipeline() {
+    
+}
 
 void ModernRenderTriangle::setupDebugMessenger() {
     if (!VALIDATION_LAYERS) {

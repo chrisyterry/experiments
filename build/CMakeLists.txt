@@ -42,6 +42,9 @@ target_sources(VulkanCppModule
     FILES "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
+# get the slang compiler
+find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
+
 # Device selection
 add_library(device_selection STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/device_utils.cpp
@@ -50,6 +53,15 @@ target_include_directories(device_selection PUBLIC ${CMAKE_SOURCE_DIR}/../includ
 target_link_libraries(device_selection
     Vulkan::cppm
     glfw
+)
+
+# pipeline creation
+add_library(pipeline_creation STATIC
+    ${CMAKE_SOURCE_DIR}/../src/vulkan/pipeline_utils.cpp
+)
+target_include_directories(pipeline_creation PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(pipeline_creation
+    Vulkan::cppm
 )
 
 # Renderer
@@ -61,12 +73,64 @@ target_link_libraries(renderer
     Vulkan::cppm
     glfw
     device_selection
+    pipeline_creation
 )
 add_executable(nu_triangle ../src/vulkan/main.cpp)
 target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(nu_triangle
     renderer
 )
+
+# slang shader attachment
+function (add_slang_shader_target TARGET)
+    # SHADER_SOURCES  contains shader files to use
+    cmake_parse_arguments("SHADER" "" "" "SOURCES" ${ARGN})
+    set (SPV_NAME nu_triangle_shaders)
+    set (SHADERS_DIR ${EXECUTABLE_OUTPUT_PATH}/${TARGET})
+    set (ENTRY_POINTS -entry vertMain -entry fragMain)
+    set (OUTPUT_SPV ${SHADERS_DIR}/${SPV_NAME}.spv)
+    add_custom_command(
+        OUTPUT ${SHADERS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT ${OUTPUT_SPV}
+        COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} 
+            -target spirv 
+            -profile spirv_1_4 
+            -emit-spirv-directly 
+            -fvk-use-entrypoint-name ${ENTRY_POINTS} 
+            -o ${SPV_NAME}.spv
+        WORKING_DIRECTORY ${SHADERS_DIR}
+        DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+        COMMENT "Compiling slang shaders ${SHADER_SOURCES} to ${OUTPUT_SPV_FILE}.slv"
+        VERBATIM
+    )
+    add_custom_target(${TARGET}
+        DEPENDS ${SHADERS_DIR}/${SPV_NAME}.spv
+    )
+endfunction()
+
+set(SLANG_SHADERS 
+    ${CMAKE_SOURCE_DIR}/../shaders/nu_triangle.slang
+)
+add_slang_shader_target(shaders SOURCES ${SLANG_SHADERS}) # add slang shader target
+add_dependencies(nu_triangle shaders)
+
+if (DEFINED CHAPTER_SHADER)
+    set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)
+    file (GLOB SHADER_SOURCES ${CHAPTER_SHADER}.frag ${CHAPTER_SHADER}.vert ${CHAPTER_SHADER}.comp)
+    add_shaders_target (${CHAPTER_SHADER_TARGET} CHAPTER_NAME ${CHAPTER_NAME} SOURCES ${SHADER_SOURCES})
+    add_dependencies (${CHAPTER_NAME} ${CHAPTER_SHADER_TARGET})
+
+    set (CHAPTER_SHADER_SLANG_TARGET ${CHAPTER_NAME}_slang_shader)
+    file (GLOB SHADER_SLANG_SOURCES ${CHAPTER_SHADER}.slang)
+    if(SHADER_SLANG_SOURCES)
+      add_slang_shader_target( ${CHAPTER_SHADER_SLANG_TARGET} CHAPTER_NAME ${CHAPTER_NAME} SOURCES ${SHADER_SLANG_SOURCES})
+      add_dependencies(${CHAPTER_NAME} ${CHAPTER_SHADER_SLANG_TARGET})
+    endif()
+  endif ()
 
 #[[
 

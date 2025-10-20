@@ -3,6 +3,11 @@
 #include <map>
 #include <cassert>
 
+#include "utils/utils.hpp"
+#include <filesystem>
+
+#include <iostream>
+
 ModernRenderTriangle::ModernRenderTriangle() {
     std::vector<const char*> required_device_extensions = {
         vk::KHRSwapchainExtensionName,
@@ -91,8 +96,13 @@ void ModernRenderTriangle::createSwapchain () {
 }
 
 void ModernRenderTriangle::createGraphicsPipeline() {
+
+    // get the path to the shader file
+    std::filesystem::path executable_path = experiments::utils::getExecutablePath();
+    std::string           shader_path     = executable_path.parent_path().string() + "/shaders/nu_triangle_shaders.spv";
+
     // create the graphics pipeline
-    m_graphics_pipeline = m_graphics_pipeline_factory->createGraphicsPipeline(m_logical_device, m_swapchain);
+    m_graphics_pipeline = m_graphics_pipeline_factory->createGraphicsPipeline(m_logical_device, m_swapchain, shader_path);
 }
 
 void ModernRenderTriangle::setupDebugMessenger() {
@@ -191,6 +201,8 @@ void ModernRenderTriangle::mainLoop() {
 }
 
 void ModernRenderTriangle::cleanup() {
+    // cleanup graphics pipeline before cleanup of devices
+    m_graphics_pipeline->~Pipeline();
     // cleanup swapchain before cleanup of devices
     m_swapchain->~SwapChain();
     // cleanup glfw

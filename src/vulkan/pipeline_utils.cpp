@@ -30,10 +30,10 @@ std::unique_ptr<vk::raii::ShaderModule> GraphicsPipelineFactory::createShaderMod
     return std::move(shader_module);
 }
 
-std::unique_ptr<vk::raii::Pipeline> GraphicsPipelineFactory::createGraphicsPipeline(std::shared_ptr<LogicalDevice> logical_device, std::shared_ptr<SwapChain> swapchain) {
+std::unique_ptr<vk::raii::Pipeline> GraphicsPipelineFactory::createGraphicsPipeline(std::shared_ptr<LogicalDevice> logical_device, std::shared_ptr<SwapChain> swapchain, const std::string& shader_path) {
 
     // create the shader module for our shaders
-    std::vector<char>                       shader_code   = readBinaryFile("shaders/nu_triangle_shaders.spv");
+    std::vector<char>                       shader_code   = readBinaryFile(shader_path);
     std::unique_ptr<vk::raii::ShaderModule> shader_module = createShaderModule(logical_device, shader_code);
 
     // setup vertex shader
@@ -48,7 +48,7 @@ std::unique_ptr<vk::raii::Pipeline> GraphicsPipelineFactory::createGraphicsPipel
     vk::PipelineShaderStageCreateInfo fragment_shader_create_info{
         .stage  = vk::ShaderStageFlagBits::eFragment,
         .module = *shader_module,
-        .pName  = "vertFrag",
+        .pName  = "fragMain",
     };
 
     // programmable pipeline stages - currently causes a double linked list corruption when the window is closed?

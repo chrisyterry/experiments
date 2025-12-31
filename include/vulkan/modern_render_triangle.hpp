@@ -55,8 +55,10 @@ class ModernRenderTriangle {
 
     /**
      * @brief initialize the window to render to
+     * 
+     * @param window_name the name of the window
      */
-    void initWindow();
+    void initWindow(const std::string& window_name);
 
     /**
      * @brief create vulkan instance
@@ -98,9 +100,49 @@ class ModernRenderTriangle {
     void createSwapchain();
 
     /**
-     * @brief create a graphics pipeline for rendering vc
+     * @brief create a graphics pipeline for rendering
      */
     void createGraphicsPipeline();
+
+    // should probably be in some kind of command buffer utils files/class; make pipline utils rendering utils, move this and swapchain stuff there
+
+    /**
+     * @brief create command pool for use with command buffer
+     */
+    void createCommandPool();
+
+    /**
+     * @brief create a command buffer
+     */
+    void createCommandBuffer();
+
+    /**
+     * @brief record a command buffer
+     * 
+     * @param image_index index of current swap chain image to write to
+     */
+    void recordCommandBuffer(uint32_t image_index);
+
+    /**
+     * @brief transition the specified swapchain image layout for different operations
+     * 
+     * @param image_index index of the swapchain image to be transitioned
+     * @param old_layout old image layout
+     * @param new_layout new image layout
+     * @param src_access_mask source access mask
+     * @param dst_access_mask destination access mask
+     * @param src_stage_mask source stage mask
+     * @param dst_stage_mask destination stage mask
+     */
+    void transitionImageLayout(
+      uint32_t image_index,
+      vk::ImageLayout old_layout,
+      vk::ImageLayout new_layout,
+      vk::AccessFlags2 src_access_mask,
+      vk::AccessFlags2 dst_access_mask,
+      vk::PipelineStageFlags2 src_stage_mask,
+      vk::PipelineStageFlags2 dst_stage_mask
+    );
 
     /**
      * @brief debug callback
@@ -155,4 +197,8 @@ class ModernRenderTriangle {
     // queues
     std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing
     std::unique_ptr<vk::raii::Queue> m_presentation_queue; ///< queue for presenting (likely same as graphics queue)
+
+    // commands
+    std::unique_ptr<vk::raii::CommandPool>   m_command_pool;  ///< manages memory used to store command buffers
+    std::unique_ptr<vk::raii::CommandBuffer> m_command_buffer;  ///< buffer of commands to be submitted to a GPU
 };

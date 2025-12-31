@@ -27,14 +27,14 @@ ModernRenderTriangle::~ModernRenderTriangle() {
 }
 
 
-void ModernRenderTriangle::initWindow() {
+void ModernRenderTriangle::initWindow(const std::string& window_name) {
     // initialize GLFW without openGL stuff
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     // create the GLFW window (fourth param is monitor to open window on, last is openGL only)
-    GLFWwindow* window = glfwCreateWindow(m_window_size.first, m_window_size.second, "vulkan", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(m_window_size.first, m_window_size.second, window_name.c_str(), nullptr, nullptr);
     m_window           = std::shared_ptr<GLFWwindow>(window, DestroyGLFWWindow{});
 }
 
@@ -46,6 +46,7 @@ void ModernRenderTriangle::initVulkan() {
     createLogicalDevice();
     createSwapchain();
     createGraphicsPipeline();
+    createCommandBuffer();
 }
 
 void ModernRenderTriangle::createSurface() {
@@ -104,6 +105,163 @@ void ModernRenderTriangle::createGraphicsPipeline() {
     // create the graphics pipeline
     m_graphics_pipeline = m_graphics_pipeline_factory->createGraphicsPipeline(m_logical_device, m_swapchain, shader_path);
 }
+
+void ModernRenderTriangle::createCommandPool() {
+    /*
+    Two options for command pool flags:
+    VK_COMMAND_POOL_CREATE_TRANSIENT_BIT - hint that command buffers are re-recorded with new commands frequently
+    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT - allow command buffers to be recorded individually, otherwise all have to be reset together
+     */
+    vk::CommandPoolCreateInfo command_pool_info {
+        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = m_logical_device->queue_indexes.at(QueueType::GRAPHICS)
+    };
+
+    m_command_pool = std::make_unique<vk::raii::CommandPool>(*(m_logical_device->device), command_pool_info);
+}
+
+void ModernRenderTriangle::createCommandBuffer() {
+    // create a command pool
+    createCommandPool();
+
+    /*
+    Command buffer level has two options:
+    VK_COMMAND_BUFFER_LEVEL_PRIMARY - can be submitted for execution but not called form other command buffers
+    VK_COMMAND_BUFFER_LEVEL_SECONDARY - cannot be directly submitted but can be called from primary command buffers (i.e. reuse common operations)
+    */
+    vk::CommandBufferAllocateInfo buffer_allocation_info {
+        .commandPool = *m_command_pool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1, // can allocate multiple buffers in one buffer allocation call
+    };
+
+    // create a command buffer
+    std::vector<vk::raii::CommandBuffer> command_buffers = vk::raii::CommandBuffers(*(m_logical_device->device), buffer_allocation_info);
+    m_command_buffer                                     = std::make_unique<vk::raii::CommandBuffer>(std::move(command_buffers.front()));
+}
+
+void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
+    // always start command buffer recording with a begin; can't append to command buffer after recording
+    /*
+    options for struct given to begin:
+        
+    flags:
+        VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT - buffer will be rerecorded after executing it
+        VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT - secondary command buffer that will be entirely in single render pass
+        VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT - can be resubmitted while pending execution
+    pInheritanceInfo - specified state to inherit from calling primary command buffers
+    */
+    m_command_buffer->begin({});
+
+    // transition image to color attachment
+    transitionImageLayout(
+        image_index,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        {},  // no need to wait for previous operations
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+
+    // setup for color attachment
+    vk::ClearValue              clear_color     = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);  // black
+    vk::RenderingAttachmentInfo attachment_info = {
+        .imageView   = m_swapchain->image_views->at(image_index),  // image to render to
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,  // image format
+        .loadOp      = vk::AttachmentLoadOp::eClear,  // clear image
+        .storeOp     = vk::AttachmentStoreOp::eStore,  // store new colors for cleared image
+        .clearValue  = clear_color,
+    };
+
+    // setup rendering info
+    vk::RenderingInfo rendering_info = {
+        .renderArea = {
+            .offset = { 0, 0 },
+            .extent = m_swapchain->extent,
+        },
+        .layerCount           = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments    = &attachment_info,
+    };
+
+    // begin rendering
+    m_command_buffer->beginRendering(rendering_info);
+
+    // bind graphics pipeline
+    m_command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline); // first param specifies compute vs graphics
+
+    // set dynamic state
+    m_command_buffer->setViewport(
+        0, 
+        vk::Viewport(0.0f, 0.0f, static_cast<float>(m_swapchain->extent.height),
+        static_cast<float>(m_swapchain->extent.width), 
+        0.0f, 
+        1.0f));
+    m_command_buffer->setScissor(0, vk::Rect2D(vk::Offset2D(0,0), m_swapchain->extent));
+
+    /* draw command
+    vertexCount - number of vertices to draw
+    instanceCount - number of instances to draw; 1 if not using instanced rendering
+    firstVertex - offset in vertex buffer; lowest value of SV_VertexId
+    firstInstance - offset for instanced rendering, lowest value of SV_Instance_ID
+    */
+    m_command_buffer->draw(3, 1, 0, 0); 
+
+    // end rendering
+    m_command_buffer->endRendering();
+
+    // return image to presentation layout
+    transitionImageLayout(
+        image_index,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe
+    );
+
+    // end command buffer recording
+    m_command_buffer->end();
+}
+
+void ModernRenderTriangle::transitionImageLayout(
+    uint32_t image_index,
+    vk::ImageLayout old_layout,
+    vk::ImageLayout new_layout,
+    vk::AccessFlags2 src_access_mask,
+    vk::AccessFlags2 dst_access_mask,
+    vk::PipelineStageFlags2 src_stage_mask,
+    vk::PipelineStageFlags2 dst_stage_mask
+) {
+
+    // create barrier for the transition operation
+    vk::ImageMemoryBarrier2 barrier = {
+        .srcStageMask = src_stage_mask,
+        .srcAccessMask = src_access_mask,
+        .dstStageMask = dst_stage_mask,
+        .dstAccessMask = dst_access_mask,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = m_swapchain->images->at(image_index),
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+    vk::DependencyInfo dependencyInfo = {
+        .dependencyFlags = {},
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &barrier
+    };
+    m_command_buffer->pipelineBarrier2(dependencyInfo);
+}
+
 
 void ModernRenderTriangle::setupDebugMessenger() {
     if (!VALIDATION_LAYERS) {
@@ -210,7 +368,7 @@ void ModernRenderTriangle::cleanup() {
 }
 
 void ModernRenderTriangle::run() {
-    initWindow();
+    initWindow("test");
     initVulkan();
     mainLoop();
     cleanup();

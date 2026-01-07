@@ -47,6 +47,7 @@ void ModernRenderTriangle::initVulkan() {
     createSwapchain();
     createGraphicsPipeline();
     createCommandBuffer();
+    createSyncObjects();
 }
 
 void ModernRenderTriangle::createSurface() {
@@ -93,8 +94,8 @@ void ModernRenderTriangle::createLogicalDevice() {
 }
 
 void ModernRenderTriangle::createSwapchain () {
-    ModernRenderTriangle::m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window);
-}
+    m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window);
+}   
 
 void ModernRenderTriangle::createGraphicsPipeline() {
 
@@ -262,7 +263,6 @@ void ModernRenderTriangle::transitionImageLayout(
     m_command_buffer->pipelineBarrier2(dependencyInfo);
 }
 
-
 void ModernRenderTriangle::setupDebugMessenger() {
     if (!VALIDATION_LAYERS) {
         return;
@@ -352,10 +352,87 @@ void ModernRenderTriangle::createInstance() {
     m_instance = vk::raii::Instance(m_context, create_info);
 }
 
+void ModernRenderTriangle::drawFrame() {
+    /**
+     * steps in rendering a frame:
+     * 1) wait for previous frame to finish
+     * 2) acquire swapchain image
+     * 3) record command buffer for rendering scene
+     * 4) submit command buffer
+     * 5) present swapchain image
+     *
+     * have to perform synchronization explicitly; all operations are asynchronous - they will return immediately in CPU but the GPU will wait
+     */
+
+    // wait till preceding frame has finished rendering (takes array of fences)
+
+    vk::Result fence_result = m_logical_device->device->waitForFences(*(*m_draw_fence), vk::True, UINT64_MAX);  // true means wait for all fences, final val is timeout [ns]
+    vk::Result image_acquisition_result;
+    uint32_t image_index;
+    std::tie(image_acquisition_result, image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphore), nullptr); // first val is timeout, last is variable to write index of swapchain image that has become available
+    recordCommandBuffer(image_index);
+    // reset the fence
+    m_logical_device->device->resetFences(*(*m_draw_fence));
+
+    vk::PipelineStageFlags wait_destintation_stage_mask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+    const vk::SubmitInfo submit_info {
+        // sempahores to wait on before execution, stages of pipeline to wait
+        // - want to wait on image being available before writing colors to image 
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &*(*m_present_complete_semaphore), // each index corresponds to index in waitStages array
+        .pWaitDstStageMask = &wait_destintation_stage_mask,
+        //command buffer to submit for execution
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*(*m_command_buffer),
+        // semaphores to signal on completion
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &*(*m_rendering_complete_semaphore),
+    };
+
+    // submit command buffer to graphics queue (takes array of submit info for larger loads)
+    m_graphics_queue->submit(submit_info, *(*m_draw_fence));
+
+    const vk::PresentInfoKHR presentation_info {
+        // semaphores to wait on before presentation
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &*(*m_rendering_complete_semaphore),
+        // swaphchains to present to
+        .swapchainCount = 1,
+        .pSwapchains = &*(*(m_swapchain->swapchain)),
+        .pImageIndices = &image_index,
+        .pResults = nullptr, // optional, can specify an array of vk::Result for each swapchain to verify presentation is successful
+    };
+
+    vk::Result presentation_result = m_presentation_queue->presentKHR(presentation_info);
+
+}
+
+void ModernRenderTriangle::createSyncObjects() {
+    // semaphores order execution on the GPU (queue operations; work submitted to a queue or within a function)
+    // semaphores can be binary or timeline; binary are signaled or unsignaled
+    // supply semaphore as signal sempahore for first operation, ait for second operation
+
+    // fences order execution on the CPU - when we need to know when the GPU has finished something
+    // fences signaled or unsignaled; attach fence to GPU work, will be signaled when it's complete
+    // fences have to be reset manually
+
+    // no struct settings
+    m_present_complete_semaphore   = std::make_unique<vk::raii::Semaphore>(*(m_logical_device->device), vk::SemaphoreCreateInfo());
+    m_rendering_complete_semaphore = std::make_unique<vk::raii::Semaphore>(*(m_logical_device->device), vk::SemaphoreCreateInfo());
+    vk::FenceCreateInfo fence_info = {
+    .flags = vk::FenceCreateFlagBits::eSignaled
+    };
+    m_draw_fence                   = std::make_unique<vk::raii::Fence>(*(m_logical_device->device), fence_info);
+}
+
 void ModernRenderTriangle::mainLoop() {
     while (!glfwWindowShouldClose(m_window.get())) {
         glfwPollEvents();
+        drawFrame();
     }
+
+    // wait for GPU operations to be complete before exiting
+    m_logical_device->device->waitIdle();
 }
 
 void ModernRenderTriangle::cleanup() {

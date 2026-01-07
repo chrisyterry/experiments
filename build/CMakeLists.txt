@@ -65,6 +65,15 @@ target_link_libraries(pipeline_creation
     device_selection
 )
 
+# rendering 
+add_library(rendering STATIC
+    ${CMAKE_SOURCE_DIR}/../src/vulkan/rendering_utils.cpp
+)
+target_include_directories(rendering PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(rendering
+    Vulkan::cppm
+)
+
 # Renderer
 add_library(renderer STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/modern_render_triangle.cpp

@@ -124,6 +124,16 @@ class ModernRenderTriangle {
     void recordCommandBuffer(uint32_t image_index);
 
     /**
+     * @brief render the current frame
+     */
+    void drawFrame();
+
+    /**
+     * @brief create synchronization objects
+     */
+    void createSyncObjects();
+
+    /**
      * @brief transition the specified swapchain image layout for different operations
      * 
      * @param image_index index of the swapchain image to be transitioned
@@ -201,4 +211,9 @@ class ModernRenderTriangle {
     // commands
     std::unique_ptr<vk::raii::CommandPool>   m_command_pool;  ///< manages memory used to store command buffers
     std::unique_ptr<vk::raii::CommandBuffer> m_command_buffer;  ///< buffer of commands to be submitted to a GPU
+
+    // synchronization
+    std::unique_ptr<vk::raii::Semaphore> m_present_complete_semaphore;  ///< sempaphore for scheduling presentation
+    std::unique_ptr<vk::raii::Semaphore> m_rendering_complete_semaphore;  ///< sempaphore for scheduling rendering
+    std::unique_ptr<vk::raii::Fence>     m_draw_fence;  ///< fence to protect frame drawing
 };

@@ -149,7 +149,6 @@ std::unordered_map<QueueType, uint32_t> LogicalDeviceFactory::getQueueIndexes(st
                                                                               std::shared_ptr<vk::raii::SurfaceKHR>     surface) {
 
     std::unordered_map<QueueType, uint32_t> queue_indexes;
-
     std::vector<vk::QueueFamilyProperties> queue_family_properties = physical_device->getQueueFamilyProperties();
 
     // get the first index into queueFamilyProperties which supports graphics
@@ -240,8 +239,10 @@ std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk:
         swapchain_create_info.pQueueFamilyIndices   = nullptr;
     }
 
+    // create the swapchain, swapchain images and associated views
     swapchain->swapchain = std::make_shared<vk::raii::SwapchainKHR>(*logical_device->device, swapchain_create_info);
     swapchain->images    = std::make_shared<std::vector<vk::Image>>(swapchain->swapchain->getImages());
+    createImageViews(logical_device, swapchain);
 
     return swapchain;
 }

@@ -1,5 +1,6 @@
 #include "vulkan/pipeline_utils.hpp"
 #include <fstream>
+#include <iostream>
 
 std::vector<char> GraphicsPipelineFactory::readBinaryFile(const std::string& path) {
     // open file at end to get file size
@@ -113,8 +114,8 @@ std::unique_ptr<vk::raii::Pipeline> GraphicsPipelineFactory::createGraphicsPipel
         .colorBlendOp        = vk::BlendOp::eAdd,
         .srcAlphaBlendFactor = vk::BlendFactor::eOne,
         .dstAlphaBlendFactor = vk::BlendFactor::eZero,
-        .alphaBlendOp        = vk::BlendOp::eAdd
-        //.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA // mask specifying which colors get passed through
+        .alphaBlendOp        = vk::BlendOp::eAdd,
+        .colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA  // mask specifying which colors get passed through
     };
     vk::PipelineColorBlendStateCreateInfo color_blending{ // global color blending settings
                                                           .logicOpEnable   = vk::False,  // disable blending

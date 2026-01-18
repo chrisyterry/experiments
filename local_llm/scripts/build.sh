@@ -9,6 +9,8 @@ function print_help_string_and_exit {
     exit 1
 }
 
+source 
+
 # get the current script directory
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 start_dir=$PWD

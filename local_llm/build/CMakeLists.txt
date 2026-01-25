@@ -26,6 +26,15 @@ set_target_properties(llama_lib PROPERTIES
     # Add the ggml include path here so it propagates to anyone using llama_lib
     INTERFACE_INCLUDE_DIRECTORIES "${LLAMA_CPP_INSTALL}/include;${LLAMA_CPP_INSTALL}/ggml/include"
 )
+
+# command line parsing
+add_library(command_parsing STATIC
+    "${CMAKE_SOURCE_DIR}/../../src/commandline_args.cpp"
+)
+target_include_directories(command_parsing PUBLIC
+    "${CMAKE_SOURCE_DIR}/../../include"
+)
+
 add_library(llm_wrapper STATIC
     ${CMAKE_SOURCE_DIR}/../src/llm_wrapper.cpp
 )
@@ -51,6 +60,7 @@ target_include_directories(llm_test PRIVATE
 # llama.cpp defines the target 'llama'
 target_link_libraries(llm_test PRIVATE 
     llm_wrapper
+    command_parsing
 )
 
 # Set C++ standard (llama.cpp requires C++11 or higher, 17 is recommended)

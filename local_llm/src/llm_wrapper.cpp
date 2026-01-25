@@ -17,7 +17,7 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
 
     setTemperature(temperature);
 
-     // initialize llama cpp backend
+    // initialize llama cpp backend
     ggml_backend_load_all();
 
     // setup model parameters
@@ -37,7 +37,7 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
     // setup context
     auto context_parameters    = llama_context_default_params();
     context_parameters.n_ctx   = 2048;  // context size in tokens
-    context_parameters.n_batch = context_parameters.n_ctx; // number of tokens processed in each call to model
+    context_parameters.n_batch = context_parameters.n_ctx;  // number of tokens processed in each call to model
     m_context                  = llama_init_from_model(m_model, context_parameters);
     if (!m_context) {
         std::cout << "Blyat comrade, model context failed" << std::endl;
@@ -46,8 +46,8 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
 
     // setup sampler
     m_sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(m_sampler, llama_sampler_init_min_p(0.05f, 1)); // filter low probability noise
-    llama_sampler_chain_add(m_sampler, llama_sampler_init_temp(temperature)); // level of creativity
+    llama_sampler_chain_add(m_sampler, llama_sampler_init_min_p(0.05f, 1));  // filter low probability noise
+    llama_sampler_chain_add(m_sampler, llama_sampler_init_temp(temperature));  // level of creativity
     llama_sampler_chain_add(m_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     // get the chat template
@@ -60,8 +60,8 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
 LLM::~LLM() {
 
     // clear chat messages
-    for (auto & msg : m_chat_history) {
-        free(const_cast<char *>(msg.content));
+    for (auto& msg : m_chat_history) {
+        free(const_cast<char*>(msg.content));
     }
 
     // free resources
@@ -71,12 +71,11 @@ LLM::~LLM() {
 }
 
 void LLM::clearChat() {
-    
 }
 
 std::string LLM::getChatResponse(std::string prompt) {
     // add the user input to the message list and format it
-    m_chat_history.push_back({"user: ", strdup(prompt.c_str())});
+    m_chat_history.push_back({ "user: ", strdup(prompt.c_str()) });
     // copy chat messages to raw chars in model format
     int new_len = llama_chat_apply_template(m_chat_template, m_chat_history.data(), m_chat_history.size(), true, m_formatted_chat_messages.data(), m_formatted_chat_messages.size());
     if (new_len > (int)m_formatted_chat_messages.size()) {
@@ -95,7 +94,7 @@ std::string LLM::getChatResponse(std::string prompt) {
     std::string response = getResponseString(llm_input);
 
     // add the response to the messages
-    m_chat_history.push_back({"machine: ", strdup(response.c_str())});
+    m_chat_history.push_back({ "machine: ", strdup(response.c_str()) });
     m_prev_prompt_length = llama_chat_apply_template(m_chat_template, m_chat_history.data(), m_chat_history.size(), false, nullptr, 0);
     if (m_prev_prompt_length < 0) {
         std::cout << "failed to apply chat template!" << std::endl;
@@ -110,7 +109,8 @@ std::string LLM::getResponseString(std::string prompt) {
     const bool is_first = llama_memory_seq_pos_max(llama_get_memory(m_context), 0) == -1;
 
     // tokenize the input string
-    const int                num_tokens = llama_tokenize(m_vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);  // call first with null to get buffer size
+    const int num_tokens = std::abs(llama_tokenize(m_vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true));  // call first with null to get buffer size; a negative number means the buffer is too small
+    std::cout << "num tokens: " << num_tokens << std::endl;
     std::vector<llama_token> prompt_tokens(num_tokens);
     llama_tokenize(m_vocab, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), is_first, true);  // fill out tokens
 
@@ -148,8 +148,8 @@ std::string LLM::getResponseString(std::string prompt) {
         }
 
         // convert integer token back into string
-        char char_buffer[256];
-        int n = llama_token_to_piece(m_vocab, new_token_id, char_buffer, sizeof(char_buffer), 0, true);
+        char        char_buffer[256];
+        int         n = llama_token_to_piece(m_vocab, new_token_id, char_buffer, sizeof(char_buffer), 0, true);
         std::string response_piece(char_buffer, n);
 
         // add the string to the output

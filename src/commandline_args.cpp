@@ -93,11 +93,6 @@ void CommandLineArgs::parse(int argc, char* argv[]) {
             }
         }
 
-        std::cout << "current arg: " << current_arg << std::endl;
-        std::cout << "is value: " << is_value << std::endl;
-
-        // args after flag broken
-
         if (!is_value) {
             // record this iteration
             last_arg           = current_arg;

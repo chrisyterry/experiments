@@ -27,12 +27,14 @@ set_target_properties(llama_lib PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${LLAMA_CPP_INSTALL}/include;${LLAMA_CPP_INSTALL}/ggml/include"
 )
 
-# command line parsing
-add_library(command_parsing STATIC
+# command line parsing and user inputs
+add_library(llm_chat STATIC
     "${CMAKE_SOURCE_DIR}/../../src/commandline_args.cpp"
+    "${CMAKE_SOURCE_DIR}/../src/llm_utils.cpp"
 )
-target_include_directories(command_parsing PUBLIC
+target_include_directories(llm_chat PUBLIC
     "${CMAKE_SOURCE_DIR}/../../include"
+    "${CMAKE_SOURCE_DIR}/../include"
 )
 
 add_library(llm_wrapper STATIC
@@ -60,7 +62,7 @@ target_include_directories(llm_test PRIVATE
 # llama.cpp defines the target 'llama'
 target_link_libraries(llm_test PRIVATE 
     llm_wrapper
-    command_parsing
+    llm_chat
 )
 
 # Set C++ standard (llama.cpp requires C++11 or higher, 17 is recommended)

@@ -3,23 +3,32 @@
 #include <memory>
 #include <vector>
 #include "llm_wrapper.hpp"
+#include "llm_utils.hpp"
 #include "commandline_args.hpp"
 
 int main(int argc, char* argv[]) {
 
+    // get arguments
     std::unique_ptr<CommandLineArgs> arg_parser = std::make_unique<CommandLineArgs>("LLM chat", "Simple LLM chat using model specified with command line parameters");
     arg_parser->addArgument<std::string>("model_path", "path to the .gguf file for the model to use", "mp");
     arg_parser->parse(argc, argv);
-    
-    std::string user_input = "hello computer, it is nice to finally speak with you!";
+
+    // setup LLM
     std::unique_ptr<LLM> llm = std::make_unique<LLM>(arg_parser->getArgument<std::string>("model_path"));
     
-    std::cout << "User: " << user_input << std::endl;
+    // setup chat
+    std::unique_ptr<ConsoleInput> console_input = std::make_unique<ConsoleInput>();
 
-    // get the response from the LLM
-    std::string response = llm->getChatResponse(user_input);
+    std::cout << "----- Chat Start -----\n" << std::endl;
+    while (true) {
+        // get user input
+        std::string user_input = console_input->getInput();
+        std::cout << std::endl;
 
-    std::cout << "Machine: " << response << std::endl;
+        // get the response from the LLM
+        std::string response = llm->getChatResponse(user_input);
+        std::cout << "LLM: \n" << response << "\n" << std::endl;
+    }
 
     return 0;
 }

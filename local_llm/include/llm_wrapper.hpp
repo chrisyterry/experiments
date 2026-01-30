@@ -14,9 +14,13 @@
          * 
          * @param model_path path to the model
          * @param temperature [optional] temperature to use for sampling 
-         * @param print_debug whether to print llama and class debug messages
+         * @param print_progress [optional] whether to print indication of response processing progress
+         * @param debug_level [optional] sets debug output level, higher level outputs include output from lower levels:
+         *          0 - no output (default)
+         *          1 - statistics (inference time, number of input tokens)
+         *          2 - print llama and class debug messages
          */
-        LLM(std::string model_path, float temperature = 0.0f, bool print_debug = false);
+        LLM(std::string model_path, float temperature = 0.0f, bool print_progress = false, uint8_t debug_level = 0);
 
         /**
          * @brief LLM class destructor
@@ -52,6 +56,11 @@
          * @return the response from the LLM
          */
         std::string getResponseString(std::string prompt);
+
+        // misc
+        bool    m_print_progress      = false;  ///< whether to print model progress to command line
+        float   m_time_between_dots_s = 0.75;  ///< number of seconds between printing dots
+        uint8_t m_debug_level         = 0;  ///< debug level to use
 
         // model parameters
         float m_temperature = 0.1; ///< temperature for the LLM

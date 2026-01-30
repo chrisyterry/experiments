@@ -2,10 +2,15 @@
 #include <algorithm>
 #include <iostream>
 #include <cstring>
+#include <chrono>
 
-LLM::LLM(std::string model_path, float temperature, bool print_debug) {
+LLM::LLM(std::string model_path, float temperature, bool print_progress, uint8_t debug_level) {
 
-    if (!print_debug) {
+    // record whether to print model progress and debug output
+    m_print_progress = print_progress;
+    m_debug_level    = debug_level;
+
+    if (m_debug_level < 2) {
         // only print errors
         llama_log_set([](enum ggml_log_level level, const char* text, void* /* user_data */) {
             if (level >= GGML_LOG_LEVEL_ERROR) {
@@ -27,7 +32,7 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
     // load model
     m_model = llama_model_load_from_file("/home/chriz/Downloads/Llama-3.2-3B-Instruct-uncensored-Q6_K.gguf", model_params);
     if (!m_model) {
-        std::cout << "Blyat comrade, model failed" << std::endl;
+        std::cout << "Model initialization failed" << std::endl;
         std::exit(1);
     }
 
@@ -36,11 +41,11 @@ LLM::LLM(std::string model_path, float temperature, bool print_debug) {
 
     // setup context
     auto context_parameters    = llama_context_default_params();
-    context_parameters.n_ctx   = 2048;  // context size in tokens
+    context_parameters.n_ctx   = 4096;  // context size in tokens
     context_parameters.n_batch = context_parameters.n_ctx;  // number of tokens processed in each call to model
     m_context                  = llama_init_from_model(m_model, context_parameters);
     if (!m_context) {
-        std::cout << "Blyat comrade, model context failed" << std::endl;
+        std::cout << "model context initialization failed!" << std::endl;
         std::exit(1);
     }
 
@@ -71,6 +76,18 @@ LLM::~LLM() {
 }
 
 void LLM::clearChat() {
+    // reset the memory used by the model
+    llama_memory_seq_rm(llama_get_memory(m_context), -1, -1, -1);
+
+    // clear chat messages
+    for (auto& msg : m_chat_history) {
+        free(const_cast<char*>(msg.content));
+    }
+    m_chat_history.clear();
+    m_formatted_chat_messages.clear();
+
+    // clear prompt history
+    m_prev_prompt_length = 0;
 }
 
 std::string LLM::getChatResponse(std::string prompt) {
@@ -110,7 +127,11 @@ std::string LLM::getResponseString(std::string prompt) {
 
     // tokenize the input string
     const int num_tokens = std::abs(llama_tokenize(m_vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true));  // call first with null to get buffer size; a negative number means the buffer is too small
-    std::cout << "num tokens: " << num_tokens << std::endl;
+
+    if (m_debug_level > 0) {
+        std::cout << "input tokens: " << num_tokens << std::endl;
+    }
+
     std::vector<llama_token> prompt_tokens(num_tokens);
     llama_tokenize(m_vocab, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), is_first, true);  // fill out tokens
 
@@ -121,6 +142,10 @@ std::string LLM::getResponseString(std::string prompt) {
     // string to hold network response
     std::string response;
 
+    // record start time of response
+    auto response_start = std::chrono::steady_clock::now();
+    auto last_dot_time  = response_start;
+
     // process the tokens
     while (true) {
         int n_ctx      = llama_n_ctx(m_context);  // total token capacity
@@ -128,7 +153,7 @@ std::string LLM::getResponseString(std::string prompt) {
 
         // check that we still have context space available
         if (n_ctx_used + token_batch.n_tokens > n_ctx) {
-            std::cout << "blyat commrade, context exceeded!" << std::endl;
+            std::cout << "context exceeded!" << std::endl;
         }
 
         // run the token through the network; updates KV-cache in context with batch tokens
@@ -157,6 +182,19 @@ std::string LLM::getResponseString(std::string prompt) {
 
         // take generated token and put it into new batch to feed back to the model
         token_batch = llama_batch_get_one(&new_token_id, 1);
+
+        if (m_print_progress && std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - last_dot_time).count() >= m_time_between_dots_s) {
+            std::cout << ".";
+            std::cout.flush();
+            last_dot_time = std::chrono::steady_clock::now();
+        }
+    }
+    if (m_print_progress) {
+        std::cout << std::endl;
+    }
+
+    if (m_debug_level > 0) {
+        std::cout << "inference time: " << std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - response_start).count() << " seconds" << std::endl; 
     }
 
     return response;

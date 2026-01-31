@@ -112,9 +112,9 @@ class ModernRenderTriangle {
     void createCommandPool();
 
     /**
-     * @brief create a command buffer
+     * @brief create the required command buffers
      */
-    void createCommandBuffer();
+    void createCommandBuffers();
 
     /**
      * @brief record a command buffer
@@ -195,6 +195,8 @@ class ModernRenderTriangle {
     std::vector<vk::ImageView>        m_image_views;  ///< image views to be rendered to
 
     // rendering
+    const uint8_t                            m_max_frames_in_flight = 2;  ///< maximum frames in flight
+    uint8_t                                  m_frame_index          = 0;  ///< index for current frame being rendered
     std::unique_ptr<GraphicsPipelineFactory> m_graphics_pipeline_factory;  ///< factory for creating graphics pipelines
     std::unique_ptr<vk::raii::Pipeline>      m_graphics_pipeline;  ///< the graphics pipeline
 
@@ -209,11 +211,11 @@ class ModernRenderTriangle {
     std::unique_ptr<vk::raii::Queue> m_presentation_queue; ///< queue for presenting (likely same as graphics queue)
 
     // commands
-    std::unique_ptr<vk::raii::CommandPool>   m_command_pool;  ///< manages memory used to store command buffers
-    std::unique_ptr<vk::raii::CommandBuffer> m_command_buffer;  ///< buffer of commands to be submitted to a GPU
+    std::unique_ptr<vk::raii::CommandPool>                m_command_pool;  ///< manages memory used to store command buffers
+    std::vector<std::unique_ptr<vk::raii::CommandBuffer>> m_command_buffers;  ///< buffer of commands to be submitted to a GPU
 
     // synchronization
-    std::unique_ptr<vk::raii::Semaphore> m_present_complete_semaphore;  ///< sempaphore for scheduling presentation
-    std::unique_ptr<vk::raii::Semaphore> m_rendering_complete_semaphore;  ///< sempaphore for scheduling rendering
-    std::unique_ptr<vk::raii::Fence>     m_draw_fence;  ///< fence to protect frame drawing
+    std::vector<std::unique_ptr<vk::raii::Semaphore>> m_present_complete_semaphores;  ///< sempaphore for scheduling presentation for each frame/swapchain image
+    std::vector<std::unique_ptr<vk::raii::Semaphore>> m_rendering_complete_semaphores;  ///< sempaphore for scheduling rendering
+    std::vector<std::unique_ptr<vk::raii::Fence>>     m_draw_fences;  ///< fence to protect frame drawing
 };

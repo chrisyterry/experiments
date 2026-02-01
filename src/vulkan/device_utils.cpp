@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cassert>
 #include <limits>
+#include <chrono>
+#include <thread>
 
 PhysicalDeviceSelector::PhysicalDeviceSelector(const std::vector<const char*>& required_extensions) {
     
@@ -196,7 +198,22 @@ std::unordered_map<QueueType, uint32_t> LogicalDeviceFactory::getQueueIndexes(st
 std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
                                                              std::shared_ptr<LogicalDevice>            logical_device,
                                                              std::shared_ptr<vk::raii::SurfaceKHR>     surface,
-                                                             std::shared_ptr<GLFWwindow>               window) {
+                                                             std::shared_ptr<GLFWwindow>               window,
+                                                             std::shared_ptr<SwapChain>                old_swapchain) {
+
+    // Handle minimized window
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window.get(), &width, &height);
+    auto  call_time = std::chrono::steady_clock::now();
+    while(width == 0 || height == 0) {
+        call_time = std::chrono::steady_clock::now();
+        glfwGetFramebufferSize(window.get(), &width, &height);
+        glfwWaitEvents();
+        // wait so that we're actually idle
+        std::this_thread::sleep_until(call_time + std::chrono::duration<int, std::milli>(200));
+    }
+
+    logical_device->device->waitIdle();
 
     std::shared_ptr<SwapChain> swapchain = std::make_shared<SwapChain>();
 
@@ -224,8 +241,13 @@ std::shared_ptr<SwapChain> SwapChainFactory::createSwapchain(std::shared_ptr<vk:
         .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,  // whether to use alpha for blending with other system windows
         .presentMode      = present_mode,
         .clipped          = vk::True,  // don't care about color of pixels that are obscured by other windows (best performance)
-        .oldSwapchain     = nullptr
     };
+
+    // if a swapchain has been specified for replacement
+    if (old_swapchain) {
+        // use the old swapchain to make the new swapchain
+        swapchain_create_info.oldSwapchain = *(old_swapchain->swapchain);
+    }
 
     // handling images across multiple queue families
     uint32_t queue_family_indexes[] = {logical_device->queue_indexes.at(QueueType::GRAPHICS), logical_device->queue_indexes.at(QueueType::PRESENTATION)};

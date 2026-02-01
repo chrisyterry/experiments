@@ -31,11 +31,20 @@ void ModernRenderTriangle::initWindow(const std::string& window_name) {
     // initialize GLFW without openGL stuff
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     // create the GLFW window (fourth param is monitor to open window on, last is openGL only)
     GLFWwindow* window = glfwCreateWindow(m_window_size.first, m_window_size.second, window_name.c_str(), nullptr, nullptr);
+    // set pointer to class to use for callback
+    glfwSetWindowUserPointer(window, this);
+    // set the resize callback for the window
+    glfwSetFramebufferSizeCallback(window, ModernRenderTriangle::framebufferResizeCallback);
     m_window           = std::shared_ptr<GLFWwindow>(window, DestroyGLFWWindow{});
+}
+
+void ModernRenderTriangle::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    auto app = reinterpret_cast<ModernRenderTriangle*>(glfwGetWindowUserPointer(window));
+    app->framebufferResized();
 }
 
 void ModernRenderTriangle::initVulkan() {
@@ -94,7 +103,7 @@ void ModernRenderTriangle::createLogicalDevice() {
 }
 
 void ModernRenderTriangle::createSwapchain () {
-    m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window);
+    m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window, m_swapchain);
 }   
 
 void ModernRenderTriangle::createGraphicsPipeline() {
@@ -375,12 +384,28 @@ void ModernRenderTriangle::drawFrame() {
         throw std::runtime_error(("failed to wait for fence for frame index " + std::to_string(int(m_frame_index)) + "!"));
     }
 
-    // reset the fence that we were waiting for
+    // acquire the next swapchain image
+    vk::Result image_acquisition_result;
+    uint32_t   swapchain_image_index;
+    std::tie(image_acquisition_result, swapchain_image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
+
+    // if the current swapchain is no longer valid
+    if (image_acquisition_result == vk::Result::eErrorOutOfDateKHR) {
+        // recreate the swapchain (we can longer render to the old swapchain)
+        createSwapchain();
+        return;
+    }
+
+    // we've failed to acquire a swapchain image for an unexpected reason
+    if (image_acquisition_result != vk::Result::eSuccess &&
+        image_acquisition_result != vk::Result::eSuboptimalKHR) {
+        assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
+    // reset the fence that we were waiting for, only doing this if the swapchain has not been reset
     m_logical_device->device->resetFences(*(*m_draw_fences.at(m_frame_index)));
 
-    vk::Result image_acquisition_result;
-    uint32_t swapchain_image_index;
-    std::tie(image_acquisition_result, swapchain_image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr); // first val is timeout, last is variable to write index of swapchain image that has become available
     m_command_buffers.at(m_frame_index)->reset();
     recordCommandBuffer(swapchain_image_index);
 
@@ -414,6 +439,16 @@ void ModernRenderTriangle::drawFrame() {
     };
 
     vk::Result presentation_result = m_presentation_queue->presentKHR(presentation_info);
+
+    // if there were issues with presentation, recreate the swapchain
+    if ((presentation_result == vk::Result::eSuboptimalKHR) ||
+        (presentation_result == vk::Result::eErrorOutOfDateKHR) ||
+        m_frame_buffer_resized) {
+        createSwapchain();
+        m_frame_buffer_resized = false;
+    } else {
+        assert(presentation_result == vk::Result::eSuccess);
+    }
 
     // advance to the next frame index
     m_frame_index = (m_frame_index + 1) & m_max_frames_in_flight;

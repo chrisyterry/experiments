@@ -6,6 +6,7 @@
 #include <memory>
 #include <iostream>
 #include <vector>
+#include <atomic>
 
 // Vulkan
 //#ifdef __INTELLISENSE__
@@ -46,6 +47,11 @@ class ModernRenderTriangle {
      * @brief run the render triangle application
      */
     void run();
+
+    /**
+     * @brief record that the framebuffer was resized
+     */
+    void framebufferResized() {m_frame_buffer_resized = true;};
 
   private:
     /**
@@ -155,6 +161,15 @@ class ModernRenderTriangle {
     );
 
     /**
+     * @brief callback for glfw window resize event
+     * 
+     * @param window pointer to the window that was resized
+     * @param width the new width of the window (pixels)
+     * @param height the new height of the window (pixels)
+     */
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+
+    /**
      * @brief debug callback
      */
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData, void*) {
@@ -191,12 +206,13 @@ class ModernRenderTriangle {
 
     // presentation
     std::unique_ptr<SwapChainFactory> m_swapchain_factory;  ///< factory for creating swapchains
-    std::shared_ptr<SwapChain>        m_swapchain;  ///< swapchain for image presentation
+    std::shared_ptr<SwapChain>        m_swapchain = nullptr;  ///< swapchain for image presentation
     std::vector<vk::ImageView>        m_image_views;  ///< image views to be rendered to
 
     // rendering
     const uint8_t                            m_max_frames_in_flight = 2;  ///< maximum frames in flight
     uint8_t                                  m_frame_index          = 0;  ///< index for current frame being rendered
+    std::atomic<bool>                        m_frame_buffer_resized = false;  ///< whether the framebuffer was resized this iteration
     std::unique_ptr<GraphicsPipelineFactory> m_graphics_pipeline_factory;  ///< factory for creating graphics pipelines
     std::unique_ptr<vk::raii::Pipeline>      m_graphics_pipeline;  ///< the graphics pipeline
 

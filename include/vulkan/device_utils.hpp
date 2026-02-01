@@ -173,10 +173,23 @@ class LogicalDeviceFactory {
  * @brief struct to hold swaphchain and associated data
  */
 struct SwapChain {
+
+    /**
+     * @brief constructor for swapchain
+     */
+    SwapChain() {
+        swapchain   = nullptr;
+        images      = nullptr;
+        image_views = nullptr;
+        format      = vk::Format::eUndefined;
+    }
+
+    bool outdated = false; ///< whether the swapchain is out date and needs removing
+
     std::shared_ptr<vk::raii::SwapchainKHR>           swapchain;  ///< the swapchain
     std::shared_ptr<std::vector<vk::Image>>           images;  ///< images in the swapchain
     std::shared_ptr<std::vector<vk::raii::ImageView>> image_views;  ///< image views for the images in the swapchain
-    vk::Format                                        format = vk::Format::eUndefined;  ///< format of swapchain images
+    vk::Format                                        format;  ///< format of swapchain images
     vk::Extent2D                                      extent;  ///< extent of swapchain surface
 };
 
@@ -197,13 +210,17 @@ class SwapChainFactory {
      * @param logical_device the logical device to use
      * @param surface the surface to render to
      * @param window the window to be rendered to
+     * @param old_swapchain [optional] old swapchain to use for swapchain recreation
+     *        (note) if you use this, you should destroy the old swapchain as it is not in use
      *
      * @return the swapchain and associated data
      */
     std::shared_ptr<SwapChain> createSwapchain(std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
                                                std::shared_ptr<LogicalDevice>            logical_device,
                                                std::shared_ptr<vk::raii::SurfaceKHR>     surface,
-                                               std::shared_ptr<GLFWwindow>               window);
+                                               std::shared_ptr<GLFWwindow>               window,
+                                               std::shared_ptr<SwapChain>                swapchain = nullptr
+                                              );
   private:
     /**
      * @brief create image views for the images in the swapchain

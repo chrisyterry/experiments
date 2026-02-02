@@ -101,6 +101,7 @@ std::shared_ptr<LogicalDevice> LogicalDeviceFactory::createLogicalDevice(std::un
                                                                          std::shared_ptr<vk::raii::PhysicalDevice> physical_device,
                                                                          std::shared_ptr<vk::raii::SurfaceKHR>     surface) {
 
+
     std::shared_ptr<LogicalDevice> logical_device = std::make_shared<LogicalDevice>();
 
     // get the required queue indexes
@@ -120,6 +121,8 @@ std::shared_ptr<LogicalDevice> LogicalDeviceFactory::createLogicalDevice(std::un
         .pQueuePriorities = &queue_priority  // can be a number between 0 and 1, influences command buffer execution scheduling
     };
 
+    // to enable features, have to specify the feature to be enabled in the structure chain in .pNext and provide the name of the extension in 
+
     // to enable multiple features have to link structure elements together with pNext;
     // structure chain does this for you
     // Each template argument is a structure in the chain
@@ -127,8 +130,14 @@ std::shared_ptr<LogicalDevice> LogicalDeviceFactory::createLogicalDevice(std::un
                        vk::PhysicalDeviceVulkan13Features,  // if we needed something added in other versions of vulkan, add the structs for those versions to the chains
                        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
         feature_chain = {
-            {},  // empty struct
-            { .dynamicRendering = true },  // feature was added in vulkan 1.3 so we have to use the vulkan 1.3 struct to set it
+            // physical device features to enable
+            {},
+            // Vulkan 1.3 features to enable
+            {
+                .synchronization2 = true,
+                .dynamicRendering = true,
+            },
+            // Dynamic state features to enable
             { .extendedDynamicState = true }
         };
 

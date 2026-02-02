@@ -43,6 +43,7 @@ void ModernRenderTriangle::initWindow(const std::string& window_name) {
 }
 
 void ModernRenderTriangle::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    std::cout << "-------------here-----------" << std::endl;
     auto app = reinterpret_cast<ModernRenderTriangle*>(glfwGetWindowUserPointer(window));
     app->framebufferResized();
 }

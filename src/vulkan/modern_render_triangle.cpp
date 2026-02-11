@@ -152,7 +152,7 @@ void ModernRenderTriangle::createCommandBuffers() {
     // create a command buffer
     std::vector<vk::raii::CommandBuffer> command_buffers = vk::raii::CommandBuffers(*(m_logical_device->device), buffer_allocation_info);
     for (uint8_t buffer_index = 0; buffer_index < m_max_frames_in_flight; ++buffer_index) {
-        m_command_buffers.emplace_back(std::make_unique<vk::raii::CommandBuffer>(std::move(command_buffers.front())));
+        m_command_buffers.emplace_back(std::make_unique<vk::raii::CommandBuffer>(std::move(command_buffers[buffer_index])));
     }
 }
 
@@ -386,9 +386,7 @@ void ModernRenderTriangle::drawFrame() {
     }
 
     // acquire the next swapchain image
-    vk::Result image_acquisition_result;
-    uint32_t   swapchain_image_index;
-    std::tie(image_acquisition_result, swapchain_image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
+    auto [image_acquisition_result, swapchain_image_index] = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
 
     // if the current swapchain is no longer valid
     if (image_acquisition_result == vk::Result::eErrorOutOfDateKHR) {
@@ -406,7 +404,6 @@ void ModernRenderTriangle::drawFrame() {
 
     // reset the fence that we were waiting for, only doing this if the swapchain has not been reset
     m_logical_device->device->resetFences(*(*m_draw_fences.at(m_frame_index)));
-
     m_command_buffers.at(m_frame_index)->reset();
     recordCommandBuffer(swapchain_image_index);
 
@@ -422,7 +419,7 @@ void ModernRenderTriangle::drawFrame() {
         .pCommandBuffers = &*(*m_command_buffers.at(m_frame_index)),
         // semaphores to signal on completion
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*(*m_rendering_complete_semaphores.at(m_frame_index)),
+        .pSignalSemaphores = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
     };
 
     // submit command buffer to graphics queue (takes array of submit info for larger loads)
@@ -431,7 +428,7 @@ void ModernRenderTriangle::drawFrame() {
     const vk::PresentInfoKHR presentation_info {
         // semaphores to wait on before presentation
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*(*m_rendering_complete_semaphores.at(m_frame_index)),
+        .pWaitSemaphores = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
         // swaphchains to present to
         .swapchainCount = 1,
         .pSwapchains = &*(*(m_swapchain->swapchain)),
@@ -452,7 +449,7 @@ void ModernRenderTriangle::drawFrame() {
     }
 
     // advance to the next frame index
-    m_frame_index = (m_frame_index + 1) & m_max_frames_in_flight;
+    m_frame_index = (m_frame_index + 1) % m_max_frames_in_flight;
 }
 
 void ModernRenderTriangle::createSyncObjects() {
@@ -466,14 +463,14 @@ void ModernRenderTriangle::createSyncObjects() {
 
     assert(m_present_complete_semaphores.empty() && m_rendering_complete_semaphores.empty() && m_draw_fences.empty());
 
+    vk::FenceCreateInfo fence_info = {
+    .flags = vk::FenceCreateFlagBits::eSignaled
+    };
+
     // for each swapchain image
     for (size_t i = 0; i < m_swapchain->images->size(); ++i) {
         m_rendering_complete_semaphores.emplace_back(std::make_unique<vk::raii::Semaphore>(*(m_logical_device->device), vk::SemaphoreCreateInfo()));
     }
-
-    vk::FenceCreateInfo fence_info = {
-    .flags = vk::FenceCreateFlagBits::eSignaled
-    };
 
     // for each frame in flight
     for (size_t i = 0; i < m_max_frames_in_flight; ++i) {
@@ -493,10 +490,12 @@ void ModernRenderTriangle::mainLoop() {
 }
 
 void ModernRenderTriangle::cleanup() {
-    // cleanup graphics pipeline before cleanup of devices
-    m_graphics_pipeline->~Pipeline();
-    // cleanup swapchain before cleanup of devices
-    m_swapchain->~SwapChain();
+    // cleanup swapchain before pipeline
+    m_swapchain = nullptr;
+    // cleanup graphics pipeline before window
+    m_graphics_pipeline = nullptr;
+    // cleanup window before exiting glfw
+    m_window = nullptr;
     // cleanup glfw
     glfwTerminate();
 }

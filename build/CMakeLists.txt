@@ -24,8 +24,6 @@ target_compile_definitions(VulkanCppModule PUBLIC
     VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
 
-# can disable C++ exceptions using VULKAN_HPP_NO_EXCEPTIONS=1
-
 target_include_directories(VulkanCppModule
     PRIVATE
     "${Vulkan_INCLUDE_DIR}"
@@ -127,20 +125,6 @@ set(SLANG_SHADERS
 )
 add_slang_shader_target(shaders SOURCES ${SLANG_SHADERS}) # add slang shader target
 add_dependencies(nu_triangle shaders)
-
-if (DEFINED CHAPTER_SHADER)
-    set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)
-    file (GLOB SHADER_SOURCES ${CHAPTER_SHADER}.frag ${CHAPTER_SHADER}.vert ${CHAPTER_SHADER}.comp)
-    add_shaders_target (${CHAPTER_SHADER_TARGET} CHAPTER_NAME ${CHAPTER_NAME} SOURCES ${SHADER_SOURCES})
-    add_dependencies (${CHAPTER_NAME} ${CHAPTER_SHADER_TARGET})
-
-    set (CHAPTER_SHADER_SLANG_TARGET ${CHAPTER_NAME}_slang_shader)
-    file (GLOB SHADER_SLANG_SOURCES ${CHAPTER_SHADER}.slang)
-    if(SHADER_SLANG_SOURCES)
-      add_slang_shader_target( ${CHAPTER_SHADER_SLANG_TARGET} CHAPTER_NAME ${CHAPTER_NAME} SOURCES ${SHADER_SLANG_SOURCES})
-      add_dependencies(${CHAPTER_NAME} ${CHAPTER_SHADER_SLANG_TARGET})
-    endif()
-  endif ()
 
 #[[
 

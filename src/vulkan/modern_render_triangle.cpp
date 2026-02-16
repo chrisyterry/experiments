@@ -26,7 +26,6 @@ ModernRenderTriangle::~ModernRenderTriangle() {
     cleanup();
 }
 
-
 void ModernRenderTriangle::initWindow(const std::string& window_name) {
     // initialize GLFW without openGL stuff
     glfwInit();
@@ -39,11 +38,10 @@ void ModernRenderTriangle::initWindow(const std::string& window_name) {
     glfwSetWindowUserPointer(window, this);
     // set the resize callback for the window
     glfwSetFramebufferSizeCallback(window, ModernRenderTriangle::framebufferResizeCallback);
-    m_window           = std::shared_ptr<GLFWwindow>(window, DestroyGLFWWindow{});
+    m_window = std::shared_ptr<GLFWwindow>(window, DestroyGLFWWindow{});
 }
 
 void ModernRenderTriangle::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    std::cout << "-------------here-----------" << std::endl;
     auto app = reinterpret_cast<ModernRenderTriangle*>(glfwGetWindowUserPointer(window));
     app->framebufferResized();
 }
@@ -209,8 +207,8 @@ void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
     // set dynamic state
     m_command_buffers.at(m_frame_index)->setViewport(
         0, 
-        vk::Viewport(0.0f, 0.0f, static_cast<float>(m_swapchain->extent.height),
-        static_cast<float>(m_swapchain->extent.width), 
+        vk::Viewport(0.0f, 0.0f, static_cast<float>(m_swapchain->extent.width),
+        static_cast<float>(m_swapchain->extent.height), 
         0.0f, 
         1.0f));
     m_command_buffers.at(m_frame_index)->setScissor(0, vk::Rect2D(vk::Offset2D(0,0), m_swapchain->extent));
@@ -385,21 +383,22 @@ void ModernRenderTriangle::drawFrame() {
         throw std::runtime_error(("failed to wait for fence for frame index " + std::to_string(int(m_frame_index)) + "!"));
     }
 
-    // acquire the next swapchain image
-    auto [image_acquisition_result, swapchain_image_index] = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
-
-    // if the current swapchain is no longer valid
-    if (image_acquisition_result == vk::Result::eErrorOutOfDateKHR) {
-        // recreate the swapchain (we can longer render to the old swapchain)
-        createSwapchain();
-        return;
-    }
-
-    // we've failed to acquire a swapchain image for an unexpected reason
-    if (image_acquisition_result != vk::Result::eSuccess &&
-        image_acquisition_result != vk::Result::eSuboptimalKHR) {
-        assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
-        throw std::runtime_error("failed to acquire swap chain image!");
+    // apparently we have to use try-catch blocks when using raii
+    vk::Result image_acquisition_result;
+    uint32_t   swapchain_image_index;
+    try {
+        // acquire the next swapchain image
+        std::tie(image_acquisition_result, swapchain_image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
+    // non-success return code
+    } catch (const vk::SystemError& e) {
+        // current swapchain is no longer valid
+        if (e.code() == vk::Result::eErrorOutOfDateKHR) {
+            createSwapchain();
+            return;
+        } else {
+            std::cout << "Error during swapchain image acquisition: " << e.what() << std::endl;
+            throw;
+        }
     }
 
     // reset the fence that we were waiting for, only doing this if the swapchain has not been reset
@@ -424,7 +423,6 @@ void ModernRenderTriangle::drawFrame() {
 
     // submit command buffer to graphics queue (takes array of submit info for larger loads)
     m_graphics_queue->submit(submit_info, *(*m_draw_fences.at(m_frame_index)));
-
     const vk::PresentInfoKHR presentation_info {
         // semaphores to wait on before presentation
         .waitSemaphoreCount = 1,
@@ -436,16 +434,23 @@ void ModernRenderTriangle::drawFrame() {
         .pResults = nullptr, // optional, can specify an array of vk::Result for each swapchain to verify presentation is successful
     };
 
-    vk::Result presentation_result = m_presentation_queue->presentKHR(presentation_info);
+    vk::Result presentation_result;
+    // present the image to the swapchain
+    try {
+        presentation_result = m_presentation_queue->presentKHR(presentation_info);
+    // non-success return code
+    } catch (const vk::SystemError& e) {
+        // window resize
+        if (e.code() == vk::Result::eSuboptimalKHR ||
+            e.code() == vk::Result::eErrorOutOfDateKHR ||
+            m_frame_buffer_resized) {
 
-    // if there were issues with presentation, recreate the swapchain
-    if ((presentation_result == vk::Result::eSuboptimalKHR) ||
-        (presentation_result == vk::Result::eErrorOutOfDateKHR) ||
-        m_frame_buffer_resized) {
-        createSwapchain();
-        m_frame_buffer_resized = false;
-    } else {
-        assert(presentation_result == vk::Result::eSuccess);
+            createSwapchain();
+            m_frame_buffer_resized = false;
+        } else {
+            std::cout << "Error during image presentation: " << e.what() << std::endl;
+            throw;
+        }
     }
 
     // advance to the next frame index

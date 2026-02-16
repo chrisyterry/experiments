@@ -8,6 +8,12 @@
 
 #include <iostream>
 
+// open questions:
+// move window-related stuff into class with rendering utils?
+// move command buffer stuff into pipeline utils?
+// move instance stuff into instance utils?
+
+
 ModernRenderTriangle::ModernRenderTriangle() {
     std::vector<const char*> required_device_extensions = {
         vk::KHRSwapchainExtensionName,

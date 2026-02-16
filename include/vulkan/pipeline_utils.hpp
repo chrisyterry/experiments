@@ -5,8 +5,8 @@
 #include <memory>
 
 #include <vulkan/vulkan_raii.hpp>
-
 #include <vulkan/device_utils.hpp>
+#include <vulkan/rendering_utils.hpp>
 
 /**
  * @brief factory class for creating graphics pipelines

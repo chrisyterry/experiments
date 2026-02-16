@@ -43,33 +43,34 @@ target_sources(VulkanCppModule
 # get the slang compiler
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
-# Device selection
-add_library(device_selection STATIC
+# Device utils
+add_library(device_utils STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/device_utils.cpp
 )
-target_include_directories(device_selection PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-target_link_libraries(device_selection
+target_include_directories(device_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(device_utils
     Vulkan::cppm
     glfw
 )
 
-# pipeline creation
-add_library(pipeline_creation STATIC
+# Pipeline utils
+add_library(pipeline_utils STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/pipeline_utils.cpp
 )
-target_include_directories(pipeline_creation PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-target_link_libraries(pipeline_creation
+target_include_directories(pipeline_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(pipeline_utils
     Vulkan::cppm
-    device_selection
+    device_utils
 )
 
-# rendering 
-add_library(rendering STATIC
+# Rendering utils
+add_library(rendering_utils STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/rendering_utils.cpp
 )
-target_include_directories(rendering PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-target_link_libraries(rendering
+target_include_directories(rendering_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(rendering_utils
     Vulkan::cppm
+    device_utils
 )
 
 # Renderer
@@ -80,8 +81,9 @@ target_include_directories(renderer PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(renderer
     Vulkan::cppm
     glfw
-    device_selection
-    pipeline_creation
+    device_utils
+    pipeline_utils
+    rendering_utils
 )
 add_executable(nu_triangle ../src/vulkan/main.cpp)
 target_include_directories(nu_triangle PUBLIC ${CMAKE_SOURCE_DIR}/../include)

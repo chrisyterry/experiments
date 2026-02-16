@@ -25,6 +25,7 @@ constexpr bool VALIDATION_LAYERS = false;
 // homebrew utilities
 #include "vulkan/device_utils.hpp"
 #include "vulkan/pipeline_utils.hpp"
+#include "vulkan/rendering_utils.hpp"
 
 class ModernRenderTriangle {
   public:

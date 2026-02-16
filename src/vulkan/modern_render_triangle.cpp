@@ -13,7 +13,6 @@
 // move command buffer stuff into pipeline utils?
 // move instance stuff into instance utils?
 
-
 ModernRenderTriangle::ModernRenderTriangle() {
     std::vector<const char*> required_device_extensions = {
         vk::KHRSwapchainExtensionName,
@@ -22,7 +21,7 @@ ModernRenderTriangle::ModernRenderTriangle() {
         vk::KHRCreateRenderpass2ExtensionName
     };
 
-    m_device_selector           = std::make_unique<PhysicalDeviceSelector>(required_device_extensions);
+    m_device_queries            = std::make_unique<PhysicalDeviceQueries>(required_device_extensions);
     m_logical_device_factory    = std::make_unique<LogicalDeviceFactory>(required_device_extensions);
     m_swapchain_factory         = std::make_unique<SwapChainFactory>();
     m_graphics_pipeline_factory = std::make_unique<GraphicsPipelineFactory>();
@@ -61,11 +60,59 @@ void ModernRenderTriangle::initVulkan() {
     createSwapchain();
     createGraphicsPipeline();
     createCommandBuffers();
+    createVertexBuffers(m_vertices);
     createSyncObjects();
 }
 
+void ModernRenderTriangle::createVertexBuffers(const std::vector<Vertex>& vertices) {
+    vk::BufferCreateInfo buffer_info{
+        //.flags // configures buffer flags such as sparse memory
+        .size        = sizeof(vertices[0]) * vertices.size(),  // buffer size (bytes)
+        .usage       = vk::BufferUsageFlagBits::eVertexBuffer,  // use of buffer; can specify multiple uses using bitwise OR
+        .sharingMode = vk::SharingMode::eExclusive,  // buffers can be shared between queues or owned by single queue
+    };
+
+    // create buffer
+    m_vertex_buffer = std::make_unique<vk::raii::Buffer>(*(m_logical_device->device), buffer_info);
+
+    /*
+    memory requirements for the buffer, has three fields:
+        1) size - size of required memory, can differ from .size()
+        2) alignment - num offset bytes of buffer start from start of allocated region of memory; depends on .usage and .flags
+        3) memoryTypeBits - bit field of memory types suitable for the buffer
+    */
+    vk::MemoryRequirements memory_requirements = m_vertex_buffer->getMemoryRequirements();
+
+    // find the required memory on the physical device
+    // we specify host coherent here so that the device immediately fills the specified memory
+    uint32_t memory_type_index = m_device_queries->findMemoryType(*m_physical_device, memory_requirements.memoryTypeBits,
+                                                                  vk::MemoryPropertyFlagBits::eHostVisible |
+                                                                      vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    vk::MemoryAllocateInfo memory_allocation_info{
+        .allocationSize  = memory_requirements.size,
+        .memoryTypeIndex = memory_type_index,
+    };
+
+    // allocate the memory
+    m_vertex_buffer_memory = std::make_unique<vk::raii::DeviceMemory>(*(m_logical_device->device), memory_allocation_info);
+    // bind the vertex buffer to the memory
+    m_vertex_buffer->bindMemory(*(*m_vertex_buffer_memory), 0);  // if offset is non-zero, must be divisible by memory_requirements.alignment
+
+    /*
+    map device memory to CPU-accessible memory; data may not be immediately copied to memory or immediately host-visible
+    have two options for how to deal with this:
+        1) use host-coherent memory
+        2) use vkFlushMappedMemoryRanges after writing to memory then vkInvalidateMappedMemoryRanges before reading from mapped memory
+    */
+    void* data = m_vertex_buffer_memory->mapMemory(0, buffer_info.size);
+    // copying of data to GPU happens in background, guaranteed to happen by vkQueueSubmit
+    memcpy(data, vertices.data(), buffer_info.size);
+    m_vertex_buffer_memory->unmapMemory();
+}
+
 void ModernRenderTriangle::createSurface() {
-    VkSurfaceKHR surface; // from C API
+    VkSurfaceKHR surface;  // from C API
     if (glfwCreateWindowSurface(*m_instance, m_window.get(), nullptr, &surface) != 0) {
         throw std::runtime_error("failed to create window surface!");
     }
@@ -78,7 +125,7 @@ void ModernRenderTriangle::pickPhysicalDevice() {
     std::multimap<uint32_t, std::shared_ptr<vk::raii::PhysicalDevice>> candidate_devices;
 
     for (const auto& device : devices) {
-        std::optional<uint32_t> weight = m_device_selector->scoreDevice(device);
+        std::optional<uint32_t> weight = m_device_queries->scoreDevice(device);
         if (weight.has_value()) {
             candidate_devices.emplace(weight.value(), std::make_shared<vk::raii::PhysicalDevice>(device));
         }
@@ -94,12 +141,12 @@ void ModernRenderTriangle::pickPhysicalDevice() {
 }
 
 void ModernRenderTriangle::createLogicalDevice() {
-    
+
     // attempt to create the logical device
-    m_logical_device = m_logical_device_factory->createLogicalDevice({QueueType::GRAPHICS, QueueType::PRESENTATION}, m_physical_device, m_surface);
+    m_logical_device = m_logical_device_factory->createLogicalDevice({ QueueType::GRAPHICS, QueueType::PRESENTATION }, m_physical_device, m_surface);
 
     if (!m_logical_device->device) {
-        throw std::runtime_error( "Could not find a queue for graphics or presentation" );
+        throw std::runtime_error("Could not find a queue for graphics or presentation");
     }
 
     // get handles for the required queues
@@ -107,9 +154,9 @@ void ModernRenderTriangle::createLogicalDevice() {
     m_presentation_queue = std::make_unique<vk::raii::Queue>(*m_logical_device->device, m_logical_device->queue_indexes.at(QueueType::PRESENTATION), 0);
 }
 
-void ModernRenderTriangle::createSwapchain () {
+void ModernRenderTriangle::createSwapchain() {
     m_swapchain = m_swapchain_factory->createSwapchain(m_physical_device, m_logical_device, m_surface, m_window, m_swapchain);
-}   
+}
 
 void ModernRenderTriangle::createGraphicsPipeline() {
 
@@ -127,8 +174,8 @@ void ModernRenderTriangle::createCommandPool() {
     VK_COMMAND_POOL_CREATE_TRANSIENT_BIT - hint that command buffers are re-recorded with new commands frequently
     VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT - allow command buffers to be recorded individually, otherwise all have to be reset together
      */
-    vk::CommandPoolCreateInfo command_pool_info {
-        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+    vk::CommandPoolCreateInfo command_pool_info{
+        .flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = m_logical_device->queue_indexes.at(QueueType::GRAPHICS)
     };
 
@@ -147,10 +194,10 @@ void ModernRenderTriangle::createCommandBuffers() {
     VK_COMMAND_BUFFER_LEVEL_PRIMARY - can be submitted for execution but not called form other command buffers
     VK_COMMAND_BUFFER_LEVEL_SECONDARY - cannot be directly submitted but can be called from primary command buffers (i.e. reuse common operations)
     */
-    vk::CommandBufferAllocateInfo buffer_allocation_info {
-        .commandPool = *m_command_pool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = m_max_frames_in_flight, // can allocate multiple buffers in one buffer allocation call
+    vk::CommandBufferAllocateInfo buffer_allocation_info{
+        .commandPool        = *m_command_pool,
+        .level              = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = m_max_frames_in_flight,  // can allocate multiple buffers in one buffer allocation call
     };
 
     // create a command buffer
@@ -164,7 +211,7 @@ void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
     // always start command buffer recording with a begin; can't append to command buffer after recording
     /*
     options for struct given to begin:
-        
+
     flags:
         VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT - buffer will be rerecorded after executing it
         VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT - secondary command buffer that will be entirely in single render pass
@@ -208,16 +255,14 @@ void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
     m_command_buffers.at(m_frame_index)->beginRendering(rendering_info);
 
     // bind graphics pipeline
-    m_command_buffers.at(m_frame_index)->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline); // first param specifies compute vs graphics
+    m_command_buffers.at(m_frame_index)->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline);  // first param specifies compute vs graphics
+
+    // bind vertex buffers
+    m_command_buffers.at(m_frame_index)->bindVertexBuffers(0, *(*m_vertex_buffer), { 0 });
 
     // set dynamic state
-    m_command_buffers.at(m_frame_index)->setViewport(
-        0, 
-        vk::Viewport(0.0f, 0.0f, static_cast<float>(m_swapchain->extent.width),
-        static_cast<float>(m_swapchain->extent.height), 
-        0.0f, 
-        1.0f));
-    m_command_buffers.at(m_frame_index)->setScissor(0, vk::Rect2D(vk::Offset2D(0,0), m_swapchain->extent));
+    m_command_buffers.at(m_frame_index)->setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(m_swapchain->extent.width), static_cast<float>(m_swapchain->extent.height), 0.0f, 1.0f));
+    m_command_buffers.at(m_frame_index)->setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapchain->extent));
 
     /* draw command
     vertexCount - number of vertices to draw
@@ -225,7 +270,7 @@ void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
     firstVertex - offset in vertex buffer; lowest value of SV_VertexId
     firstInstance - offset for instanced rendering, lowest value of SV_Instance_ID
     */
-    m_command_buffers.at(m_frame_index)->draw(3, 1, 0, 0); 
+    m_command_buffers.at(m_frame_index)->draw(m_vertices.size(), 1, 0, 0);
 
     // end rendering
     m_command_buffers.at(m_frame_index)->endRendering();
@@ -238,46 +283,43 @@ void ModernRenderTriangle::recordCommandBuffer(uint32_t image_index) {
         vk::AccessFlagBits2::eColorAttachmentWrite,
         {},
         vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eBottomOfPipe
-    );
+        vk::PipelineStageFlagBits2::eBottomOfPipe);
 
     // end command buffer recording
     m_command_buffers.at(m_frame_index)->end();
 }
 
 void ModernRenderTriangle::transitionImageLayout(
-    uint32_t image_index,
-    vk::ImageLayout old_layout,
-    vk::ImageLayout new_layout,
-    vk::AccessFlags2 src_access_mask,
-    vk::AccessFlags2 dst_access_mask,
+    uint32_t                image_index,
+    vk::ImageLayout         old_layout,
+    vk::ImageLayout         new_layout,
+    vk::AccessFlags2        src_access_mask,
+    vk::AccessFlags2        dst_access_mask,
     vk::PipelineStageFlags2 src_stage_mask,
-    vk::PipelineStageFlags2 dst_stage_mask
-) {
+    vk::PipelineStageFlags2 dst_stage_mask) {
 
     // create barrier for the transition operation
     vk::ImageMemoryBarrier2 barrier = {
-        .srcStageMask = src_stage_mask,
-        .srcAccessMask = src_access_mask,
-        .dstStageMask = dst_stage_mask,
-        .dstAccessMask = dst_access_mask,
-        .oldLayout = old_layout,
-        .newLayout = new_layout,
+        .srcStageMask        = src_stage_mask,
+        .srcAccessMask       = src_access_mask,
+        .dstStageMask        = dst_stage_mask,
+        .dstAccessMask       = dst_access_mask,
+        .oldLayout           = old_layout,
+        .newLayout           = new_layout,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = m_swapchain->images->at(image_index),
-        .subresourceRange = {
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
-        }
+        .image               = m_swapchain->images->at(image_index),
+        .subresourceRange    = {
+               .aspectMask     = vk::ImageAspectFlagBits::eColor,
+               .baseMipLevel   = 0,
+               .levelCount     = 1,
+               .baseArrayLayer = 0,
+               .layerCount     = 1 }
     };
     vk::DependencyInfo dependencyInfo = {
-        .dependencyFlags = {},
+        .dependencyFlags         = {},
         .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &barrier
+        .pImageMemoryBarriers    = &barrier
     };
     m_command_buffers.at(m_frame_index)->pipelineBarrier2(dependencyInfo);
 }
@@ -311,8 +353,7 @@ std::vector<char const*> ModernRenderTriangle::getRequiredLayers() {
     // check if layers are supported
     auto layer_properties = m_context.enumerateInstanceLayerProperties();
     if (std::ranges::any_of(required_layers, [&layer_properties](auto const& required_layer) {
-        return std::ranges::none_of(layer_properties, [required_layer](auto const& layer_property) {
-            return std::strcmp(layer_property.layerName, required_layer) == 0; });
+            return std::ranges::none_of(layer_properties, [required_layer](auto const& layer_property) { return std::strcmp(layer_property.layerName, required_layer) == 0; });
         })
 
     ) {
@@ -325,7 +366,7 @@ std::vector<char const*> ModernRenderTriangle::getRequiredLayers() {
 std::vector<char const*> ModernRenderTriangle::getRequiredExtensions() {
     // get GLFW extensions
     uint32_t glfw_extension_count = 0;
-    auto     glfw_extensions      = glfwGetRequiredInstanceExtensions(&glfw_extension_count); // this will get platform-specific windowing extensions for us
+    auto     glfw_extensions      = glfwGetRequiredInstanceExtensions(&glfw_extension_count);  // this will get platform-specific windowing extensions for us
 
     // check if extensions are supported by Vulkan
     auto extension_properties = m_context.enumerateInstanceExtensionProperties();
@@ -359,12 +400,12 @@ void ModernRenderTriangle::createInstance() {
     std::vector<char const*> required_extensions = getRequiredExtensions();
 
     // instance creation config
-    vk::InstanceCreateInfo create_info {
+    vk::InstanceCreateInfo create_info{
         .pApplicationInfo        = &app_info,
         .enabledLayerCount       = static_cast<uint32_t>(required_layers.size()),
         .ppEnabledLayerNames     = required_layers.data(),
         .enabledExtensionCount   = static_cast<uint32_t>(required_extensions.size()),
-        .ppEnabledExtensionNames = required_extensions.data() 
+        .ppEnabledExtensionNames = required_extensions.data()
     };
 
     // create the instance
@@ -395,7 +436,7 @@ void ModernRenderTriangle::drawFrame() {
     try {
         // acquire the next swapchain image
         std::tie(image_acquisition_result, swapchain_image_index) = m_swapchain->swapchain->acquireNextImage(UINT64_MAX, *(*m_present_complete_semaphores.at(m_frame_index)), nullptr);  // first val is timeout, last is variable to write index of swapchain image that has become available
-    // non-success return code
+        // non-success return code
     } catch (const vk::SystemError& e) {
         // current swapchain is no longer valid
         if (e.code() == vk::Result::eErrorOutOfDateKHR) {
@@ -413,38 +454,38 @@ void ModernRenderTriangle::drawFrame() {
     recordCommandBuffer(swapchain_image_index);
 
     vk::PipelineStageFlags wait_destination_stage_mask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-    const vk::SubmitInfo submit_info {
+    const vk::SubmitInfo   submit_info{
         // sempahores to wait on before execution, stages of pipeline to wait
-        // - want to wait on image being available before writing colors to image 
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*(*m_present_complete_semaphores.at(m_frame_index)), // each index corresponds to index in waitStages array
-        .pWaitDstStageMask = &wait_destination_stage_mask,
-        //command buffer to submit for execution
-        .commandBufferCount = 1,
-        .pCommandBuffers = &*(*m_command_buffers.at(m_frame_index)),
+        // - want to wait on image being available before writing colors to image
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores    = &*(*m_present_complete_semaphores.at(m_frame_index)),  // each index corresponds to index in waitStages array
+          .pWaitDstStageMask  = &wait_destination_stage_mask,
+        // command buffer to submit for execution
+          .commandBufferCount = 1,
+          .pCommandBuffers    = &*(*m_command_buffers.at(m_frame_index)),
         // semaphores to signal on completion
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores    = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
     };
 
     // submit command buffer to graphics queue (takes array of submit info for larger loads)
     m_graphics_queue->submit(submit_info, *(*m_draw_fences.at(m_frame_index)));
-    const vk::PresentInfoKHR presentation_info {
+    const vk::PresentInfoKHR presentation_info{
         // semaphores to wait on before presentation
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
+        .pWaitSemaphores    = &*(*m_rendering_complete_semaphores.at(swapchain_image_index)),
         // swaphchains to present to
         .swapchainCount = 1,
-        .pSwapchains = &*(*(m_swapchain->swapchain)),
-        .pImageIndices = &swapchain_image_index,
-        .pResults = nullptr, // optional, can specify an array of vk::Result for each swapchain to verify presentation is successful
+        .pSwapchains    = &*(*(m_swapchain->swapchain)),
+        .pImageIndices  = &swapchain_image_index,
+        .pResults       = nullptr,  // optional, can specify an array of vk::Result for each swapchain to verify presentation is successful
     };
 
     vk::Result presentation_result;
     // present the image to the swapchain
     try {
         presentation_result = m_presentation_queue->presentKHR(presentation_info);
-    // non-success return code
+        // non-success return code
     } catch (const vk::SystemError& e) {
         // window resize
         if (e.code() == vk::Result::eSuboptimalKHR ||
@@ -475,7 +516,7 @@ void ModernRenderTriangle::createSyncObjects() {
     assert(m_present_complete_semaphores.empty() && m_rendering_complete_semaphores.empty() && m_draw_fences.empty());
 
     vk::FenceCreateInfo fence_info = {
-    .flags = vk::FenceCreateFlagBits::eSignaled
+        .flags = vk::FenceCreateFlagBits::eSignaled
     };
 
     // for each swapchain image

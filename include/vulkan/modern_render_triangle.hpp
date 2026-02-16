@@ -118,6 +118,13 @@ class ModernRenderTriangle {
     void createCommandPool();
 
     /**
+     * @brief create the required vertex buffers+ and populate them with the vertices
+     * 
+     * @param vertices vertices to create the buffer for
+     */
+    void createVertexBuffers(const std::vector<Vertex>& vertices);
+
+    /**
      * @brief create the required command buffers
      */
     void createCommandBuffers();
@@ -217,14 +224,14 @@ class ModernRenderTriangle {
     std::unique_ptr<vk::raii::Pipeline>      m_graphics_pipeline;  ///< the graphics pipeline
 
     // device
-    std::unique_ptr<PhysicalDeviceSelector>   m_device_selector;  ///< supporting class for selecting physical device
+    std::unique_ptr<PhysicalDeviceQueries>    m_device_queries;  ///< supporting class for querying physical device
     std::shared_ptr<vk::raii::PhysicalDevice> m_physical_device;  ///< physical device
     std::unique_ptr<LogicalDeviceFactory>     m_logical_device_factory;  ///< factory for creating logical devices
     std::shared_ptr<LogicalDevice>            m_logical_device;  ///< logical device
 
     // queues
-    std::unique_ptr<vk::raii::Queue> m_graphics_queue; ///< queue for graphics processing
-    std::unique_ptr<vk::raii::Queue> m_presentation_queue; ///< queue for presenting (likely same as graphics queue)
+    std::unique_ptr<vk::raii::Queue> m_graphics_queue;  ///< queue for graphics processing
+    std::unique_ptr<vk::raii::Queue> m_presentation_queue;  ///< queue for presenting (likely same as graphics queue)
 
     // commands
     std::unique_ptr<vk::raii::CommandPool>                m_command_pool;  ///< manages memory used to store command buffers
@@ -236,9 +243,11 @@ class ModernRenderTriangle {
     std::vector<std::unique_ptr<vk::raii::Fence>>     m_draw_fences;  ///< fence to protect frame drawing
 
     // data
-    const std::vector<Vertex> m_vertices {
-      {{0.0, -0.5f}, {1.0f, 0.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{-0.5f, 0.f}, {0.0f, 0.0f, 1.0f}},
-    }; // having one array of vertex attributes is referred to as "interleaving" vertex attributes
+    std::unique_ptr<vk::raii::Buffer>       m_vertex_buffer        = nullptr;  ///< buffer to hold vertices. Should be available to end of program; swaphcain independent
+    std::unique_ptr<vk::raii::DeviceMemory> m_vertex_buffer_memory = nullptr;  ///< pointer to device memory for vertex buffer
+    const std::vector<Vertex>               m_vertices{
+                      { { 0.0, -0.5f }, { 1.0f, 1.0f, 1.0f } },
+                      { { 0.5f, 0.5f }, { 0.0f, 1.0f, 0.0f } },
+                      { { -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f } },
+    };  // having one array of vertex attributes is referred to as "interleaving" vertex attributes
 };

@@ -36,16 +36,16 @@ struct DestroyGLFWWindow {
 };
 
 /**
- * @brief selects physical devices for rendering
+ * @brief handles querying of physical device
  */
-class PhysicalDeviceSelector {
+class PhysicalDeviceQueries {
 
   public:
 
     /**
-     * @brief construct physical device selector with specified requirements
+     * @brief construct physical device querying object with specified requirements
      */
-    PhysicalDeviceSelector(const std::vector<const char*>& required_extensions);
+    PhysicalDeviceQueries(const std::vector<const char*>& required_extensions);
 
     /**
      * @brief get a score for the specified physical device
@@ -55,6 +55,17 @@ class PhysicalDeviceSelector {
      * @return the integer score of the device based on the configured criteria; if the device is unsuitable; return nullopt
      */
     std::optional<uint32_t> scoreDevice(const vk::raii::PhysicalDevice device);
+
+    /**
+     * @brief get available memory types for the physical device
+     * 
+     * @param device the physical device to query
+     * @param type_filter filter for memory type
+     * @param properties required properties of the memory
+     * 
+     * @return the memory type index for the device
+     */
+    uint32_t findMemoryType(const vk::raii::PhysicalDevice device, uint32_t type_filter, vk::MemoryPropertyFlags properties);
 
   private:
 

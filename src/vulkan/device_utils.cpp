@@ -3,8 +3,9 @@
 #include <iostream>
 #include <cassert>
 #include <limits>
+#include <string>
 
-PhysicalDeviceSelector::PhysicalDeviceSelector(const std::vector<const char*>& required_extensions) {
+PhysicalDeviceQueries::PhysicalDeviceQueries(const std::vector<const char*>& required_extensions) {
     
     // add the selection criteria
     m_selection_criteria.emplace_back(std::make_unique<QueueCriteria>());
@@ -12,7 +13,7 @@ PhysicalDeviceSelector::PhysicalDeviceSelector(const std::vector<const char*>& r
     m_selection_criteria.emplace_back(std::make_unique<PropertiesCriteria>());
 }
 
-std::optional<uint32_t> PhysicalDeviceSelector::scoreDevice(const vk::raii::PhysicalDevice device) {
+std::optional<uint32_t> PhysicalDeviceQueries::scoreDevice(const vk::raii::PhysicalDevice device) {
     
     uint32_t score = 0;
 
@@ -36,7 +37,7 @@ std::optional<uint32_t> PhysicalDeviceSelector::scoreDevice(const vk::raii::Phys
 
 // Queue criteria
 
-std::optional<uint32_t> PhysicalDeviceSelector::QueueCriteria::getScore(const vk::raii::PhysicalDevice device) {
+std::optional<uint32_t> PhysicalDeviceQueries::QueueCriteria::getScore(const vk::raii::PhysicalDevice device) {
     uint32_t score = 0;
     
     auto queue_families = device.getQueueFamilyProperties();
@@ -54,7 +55,7 @@ std::optional<uint32_t> PhysicalDeviceSelector::QueueCriteria::getScore(const vk
 
 // Extensions criteria
 
-std::optional<uint32_t> PhysicalDeviceSelector::ExtensionsCriteria::getScore(const vk::raii::PhysicalDevice device) {
+std::optional<uint32_t> PhysicalDeviceQueries::ExtensionsCriteria::getScore(const vk::raii::PhysicalDevice device) {
     uint32_t score = 0;
 
     bool extensions_found = true;
@@ -74,11 +75,11 @@ std::optional<uint32_t> PhysicalDeviceSelector::ExtensionsCriteria::getScore(con
 
 // Properties criteria
 
-PhysicalDeviceSelector::PropertiesCriteria::PropertiesCriteria() {
+PhysicalDeviceQueries::PropertiesCriteria::PropertiesCriteria() {
     m_permitted_devices = { vk::PhysicalDeviceType::eDiscreteGpu };
 }
 
-std::optional<uint32_t> PhysicalDeviceSelector::PropertiesCriteria::getScore(const vk::raii::PhysicalDevice device) {
+std::optional<uint32_t> PhysicalDeviceQueries::PropertiesCriteria::getScore(const vk::raii::PhysicalDevice device) {
     uint32_t score = 0;
     
     auto device_properties = device.getProperties();
@@ -88,6 +89,25 @@ std::optional<uint32_t> PhysicalDeviceSelector::PropertiesCriteria::getScore(con
     }
 
     return score;
+}
+
+uint32_t PhysicalDeviceQueries::findMemoryType(const vk::raii::PhysicalDevice device, uint32_t type_filter, vk::MemoryPropertyFlags properties) {
+    /*
+     get the memory properties of the specified physical device; memory properties has two arrays:
+        1) memoryTypes - heap and properties of each memory type (e.g. VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        2) memoryHeaps - distinct memory resources (VRAM, swap space when out of VRAM)
+    */
+    vk::PhysicalDeviceMemoryProperties memory_properties = device.getMemoryProperties();
+
+    // for each memory type
+    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
+        // memory type and property filters satisfied
+        if ((type_filter & (1 << i)) && (memory_properties.memoryTypes[i].propertyFlags & properties)) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Could not find suitable memory type for " + std::string(device.getProperties().deviceName));
 }
 
 LogicalDeviceFactory::LogicalDeviceFactory(const std::vector<const char*>& required_extensions) {

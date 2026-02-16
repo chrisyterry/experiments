@@ -1,29 +1,21 @@
-// explicit float2 array initialization
-// static means its the same for all calls to the shader
-static float2 positions[3] = float2[](
-    float2(0.0, -0.5),
-    float2(0.5, 0.5),
-    float2(-0.5, 0.5)
-);
-
-static float3 colors[3] = float3[](
-    float3(1.0, 0.0, 0.0),
-    float3(0.0, 1.0, 0.0),
-    float3(0.0, 0.0, 1.0)
-);
+struct VertexInput {
+    // vertex attributes; specified per vertex in vertex buffer
+    float2 position; // vertex position
+    float3 color;    // vertex color
+}
 
 // this combines all the info for each vertex
 struct VertexOutput {
+    float4 position : SV_position; // SV_Position is the output
     float3 color;
-    float4 sv_position : SV_position; // SV_Position is the output
 }
 
 // shader function called for each vertex
 [shader("vertex")]
-VertexOutput vertMain(uint vid : SV_VertexID) { // SV_VertexID is the ID of the vertex being processed, usually a vertex buffer index
+VertexOutput vertMain(VertexInput input) {
     VertexOutput output;
-    output.sv_position = float4(positions[vid], 0.0, 1.0);
-    output.color = colors[vid];
+    output.position = float4(input.position, 0.0, 1.0);
+    output.color = input.color;
     return output;
 }
 

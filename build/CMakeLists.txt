@@ -13,8 +13,8 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package(glfw3 REQUIRED)
-find_package(glm REQUIRED)
 find_package(Vulkan REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 add_library(VulkanCppModule)
 add_library(Vulkan::cppm ALIAS VulkanCppModule)
@@ -53,16 +53,6 @@ target_link_libraries(device_utils
     glfw
 )
 
-# Pipeline utils
-add_library(pipeline_utils STATIC
-    ${CMAKE_SOURCE_DIR}/../src/vulkan/pipeline_utils.cpp
-)
-target_include_directories(pipeline_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
-target_link_libraries(pipeline_utils
-    Vulkan::cppm
-    device_utils
-)
-
 # Rendering utils
 add_library(rendering_utils STATIC
     ${CMAKE_SOURCE_DIR}/../src/vulkan/rendering_utils.cpp
@@ -70,6 +60,18 @@ add_library(rendering_utils STATIC
 target_include_directories(rendering_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(rendering_utils
     Vulkan::cppm
+    Eigen3::Eigen
+    device_utils
+)
+
+# Pipeline utils
+add_library(pipeline_utils STATIC
+    ${CMAKE_SOURCE_DIR}/../src/vulkan/pipeline_utils.cpp
+)
+target_include_directories(pipeline_utils PUBLIC ${CMAKE_SOURCE_DIR}/../include)
+target_link_libraries(pipeline_utils
+    Vulkan::cppm
+    rendering_utils
     device_utils
 )
 
@@ -80,6 +82,7 @@ add_library(renderer STATIC
 target_include_directories(renderer PUBLIC ${CMAKE_SOURCE_DIR}/../include)
 target_link_libraries(renderer
     Vulkan::cppm
+    Eigen3::Eigen
     glfw
     device_utils
     pipeline_utils

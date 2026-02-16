@@ -8,6 +8,9 @@
 #include <vector>
 #include <atomic>
 
+// Eigen
+#include <Eigen/Dense>
+
 // Vulkan
 #include <vulkan/vulkan_raii.hpp>
 
@@ -231,4 +234,11 @@ class ModernRenderTriangle {
     std::vector<std::unique_ptr<vk::raii::Semaphore>> m_present_complete_semaphores;  ///< sempaphore for scheduling presentation for each frame/swapchain image
     std::vector<std::unique_ptr<vk::raii::Semaphore>> m_rendering_complete_semaphores;  ///< sempaphore for scheduling rendering
     std::vector<std::unique_ptr<vk::raii::Fence>>     m_draw_fences;  ///< fence to protect frame drawing
+
+    // data
+    const std::vector<Vertex> m_vertices {
+      {{0.0, -0.5f}, {1.0f, 0.0f, 0.0f}},
+      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+      {{-0.5f, 0.f}, {0.0f, 0.0f, 1.0f}},
+    }; // having one array of vertex attributes is referred to as "interleaving" vertex attributes
 };

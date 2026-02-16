@@ -58,10 +58,15 @@ std::unique_ptr<vk::raii::Pipeline> GraphicsPipelineFactory::createGraphicsPipel
         fragment_shader_create_info
     };
 
+    vk::VertexInputBindingDescription                  binding_descriptions   = Vertex::getBindingDescription();
+    std::array<vk::VertexInputAttributeDescription, 2> attribute_descriptions = Vertex::getAttributeDescriptions();
+
     // specify vertex data
     vk::PipelineVertexInputStateCreateInfo vertex_input_info{
-        // .pVertexBindingDescriptions
-        // .pVertexAttributeDescriptions
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &binding_descriptions,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descriptions.size()),
+        .pVertexAttributeDescriptions = attribute_descriptions.data()
     };
 
     // specify input assembly parameters

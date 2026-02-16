@@ -1,6 +1,57 @@
 #pragma once
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/device_utils.hpp>
+#include <array>
+#include <Eigen/Dense>
+
+/**
+ * @brief structure representing a vertex
+ * @note only need one binding description as data is packed into one struct
+ */
+struct Vertex {
+  Eigen::Vector2f position; ///< position
+  Eigen::Vector3f color; ///< color
+
+  /**
+   * @brief function to get data for binding vertex attribute
+   */
+  static vk::VertexInputBindingDescription getBindingDescription() {
+    /*
+      vertex binding specifies:
+        1) bytes between data entries
+        2) size of data
+        3) whether to move to next data entry after each vertex or each instance
+    */
+    return { 0, sizeof(Vertex), vk::VertexInputRate::eVertex};
+  }
+
+  /**
+   * @brief function to get attribute descriptions for data in the struct
+   */
+  static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions() {
+    /*
+     vertex attribute description specifies how to extract vertex attribute from chunk of vertex data 
+     from a binding description; need one attribute description per piece of data:
+      1) binding - tells vulkan which binding to get data from
+      2) location - references the location directive of input in vertex shader; position is location 0
+      3) format - data type of of attribute; use same mappings as colors. Common bindings:
+        float vk::Format::eR32Sfloat
+        float2 vk::Format::eR32G32Sfloat
+        float3 vk::Format::eR32G32B32Sfloat
+        float4 vk::Format::eR32G32B32AA32Sfloat
+      - If you use more channels than components in shader, the extras will be discarded
+      - If you use less channels than components in shader, the missing ones will use default values (0, 0, 0, 1)
+      - data type and width should match type for shader input:
+        int2 vk::Format::eR32G32Sint - 2x int32
+        uint4 vk::Format::eR32G32B32A32Uint - 4x uint32
+        double vk::Format::eR64Sfloat - 1x double
+     */
+      return {
+        vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, position)),
+        vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)),
+      };
+  }
+};
 
 /**
  * @brief struct to hold swaphchain and associated data
